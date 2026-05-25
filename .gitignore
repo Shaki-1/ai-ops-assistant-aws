@@ -14,3 +14,10 @@ backend/.env
 .env
 backend/.env
 terraform.tfvars
+.env
+backend/.env
+terraform.tfvars
+.env
+backend/.env
+terraform.tfvars
+*.pdf
