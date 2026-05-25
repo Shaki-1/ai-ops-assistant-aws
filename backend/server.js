@@ -43,7 +43,7 @@ if (aiProvider === 'openai') {
     });
     console.log(`[INIT] GenAI configured for OPENAI using model: ${openAIModel}`);
   } else {
-    console.warn('[WARNING] Running in DEMO/MOCK mode. No valid OPENAI_API_KEY found.');
+    console.warn('[WARNING] Running in DEMO/MOCK mode because no valid OpenAI key is configured.');
   }
 } else if (aiProvider === 'ollama') {
   console.log(`[INIT] GenAI configured for OLLAMA at ${ollamaBaseUrl} using model: ${ollamaModel}`);
@@ -636,6 +636,12 @@ app.listen(PORT, () => {
   console.log(`  AI Ops Assistant Server is active!`);
   console.log(`  Local Endpoint: http://localhost:${PORT}`);
   console.log(`  Provider:       ${aiProvider.toUpperCase()} (${isDemoMode ? 'DEMO/MOCK fallback active' : 'LIVE API active'})`);
-  console.log(`  Active Model:   ${aiProvider === 'openai' ? openAIModel : ollamaModel}`);
-  console.log(`================================================================`);
+  console.log(`  Active Model:   ${
+    aiProvider === 'groq'
+      ? (process.env.GROQ_MODEL || 'llama-3.1-8b-instant')
+      : aiProvider === 'openai'
+        ? openAIModel
+        : ollamaModel
+}`);
+console.log(`================================================================`);
 });

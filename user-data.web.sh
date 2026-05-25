@@ -15,7 +15,9 @@ cd /home/ec2-user/ai-ops-assistant-aws/backend
 npm install
 
 cat > .env <<ENVEOF
-OPENAI_API_KEY=REPLACE_ME_AFTER_DEPLOYMENT
+AI_PROVIDER=groq
+GROQ_API_KEY=REPLACE_ME_AFTER_DEPLOYMENT
+GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
 ENVEOF
 
