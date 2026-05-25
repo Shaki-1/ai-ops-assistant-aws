@@ -21,3 +21,8 @@ terraform.tfvars
 backend/.env
 terraform.tfvars
 *.pdf
+*.pdf
+.env
+backend/.env
+*.pem
+terraform.tfvars
