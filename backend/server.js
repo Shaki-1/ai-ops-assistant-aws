@@ -506,7 +506,7 @@ app.post('/api/analyze-log', async (req, res) => {
 
   try {
     const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
-    
+
     // Clean up potential markdown formatting block wrapper from LLM
     let cleanJsonString = aiText;
     if (cleanJsonString.startsWith("```json")) {
@@ -542,6 +542,77 @@ app.post('/api/analyze-log', async (req, res) => {
     res.status(500).json({ 
       error: "GenAI log analysis failed.", 
       details: error.message 
+    });
+  }
+});
+
+app.post('/api/analyze-command-output', async (req, res) => {
+  const { command, output } = req.body;
+
+  if (!output || output.trim() === "") {
+    return res.status(400).json({ error: "Command output cannot be empty." });
+  }
+
+  console.log(`[POST /api/analyze-command-output] Received ${output.length} chars`);
+
+  if (isDemoMode) {
+    return res.json({
+      status: "OK",
+      summary: "Demo mode: no issue detected",
+      possibleCauses: [],
+      recommendedSteps: []
+    });
+  }
+
+  try {
+    const userPrompt = `
+COMMAND:
+${command}
+
+OUTPUT:
+${output}
+
+Analyze this command output.
+
+Return ONLY valid JSON:
+{
+  "status": "OK" | "Warning" | "Critical",
+  "summary": "...",
+  "possibleCauses": ["..."],
+  "recommendedSteps": ["..."]
+}
+
+Rules:
+- If output shows success, active (running), HTTP 200/301/302, reachable, or no errors → status = "OK"
+- If output shows failed, error, denied, timeout, connection refused → Warning or Critical
+`;
+
+    const aiText = await generateAIResponse(userPrompt, "", true);
+
+    let cleanJson = aiText;
+    if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.replace(/```[a-z]*\n?/gi, "").replace(/```$/, "").trim();
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson);
+    } catch {
+      parsed = {
+        status: "Warning",
+        summary: "Could not parse AI response",
+        possibleCauses: ["Unexpected output format"],
+        recommendedSteps: ["Review manually"]
+      };
+    }
+
+    res.json(parsed);
+
+  } catch (error) {
+    console.error("[API ERROR /api/analyze-command-output]", error);
+    res.status(500).json({
+      error: "Command analysis failed",
+      details: error.message
     });
   }
 });
