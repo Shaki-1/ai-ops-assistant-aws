@@ -26,3 +26,11 @@ terraform.tfvars
 backend/.env
 *.pem
 terraform.tfvars
+.terraform/
+*.tfstate
+*.tfstate.backup
+terraform.tfvars
+tfplan
+*.pdf
+backend/.env
+.env
