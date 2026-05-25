@@ -24,20 +24,97 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Initialize OpenAI SDK
+// Determine AI Provider configuration
+const aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
 const apiKey = process.env.OPENAI_API_KEY;
-const isDemoMode = !apiKey || apiKey === 'your_openai_api_key_here';
-const modelName = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const isDemoMode = aiProvider === 'openai' && (!apiKey || apiKey === 'your_openai_api_key_here');
 
+// Initialize Active Services
 let openai = null;
-if (!isDemoMode) {
-  openai = new OpenAI({
-    apiKey: apiKey,
-    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
-  });
-  console.log(`[INIT] OpenAI Client configured using model: ${modelName}`);
+const openAIModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const ollamaModel = process.env.OLLAMA_MODEL || 'llama3';
+const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+
+if (aiProvider === 'openai') {
+  if (!isDemoMode) {
+    openai = new OpenAI({
+      apiKey: apiKey,
+      baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
+    });
+    console.log(`[INIT] GenAI configured for OPENAI using model: ${openAIModel}`);
+  } else {
+    console.warn('[WARNING] Running in DEMO/MOCK mode. No valid OPENAI_API_KEY found.');
+  }
+} else if (aiProvider === 'ollama') {
+  console.log(`[INIT] GenAI configured for OLLAMA at ${ollamaBaseUrl} using model: ${ollamaModel}`);
 } else {
-  console.warn('[WARNING] Running in DEMO/MOCK mode. No valid OPENAI_API_KEY found.');
+  console.error(`[CONFIG ERROR] Unsupported AI_PROVIDER: ${aiProvider}. Defaulting backend to Demo Mode.`);
+}
+
+// ==========================================
+// UNIFIED GENAI ADAPTER FUNCTION
+// ==========================================
+
+async function generateAIResponse(prompt, systemInstruction = '', responseFormatJson = false) {
+  if (aiProvider === 'ollama') {
+    // 1. OLLAMA API CALLS (/api/generate)
+    const combinedPrompt = systemInstruction 
+      ? `${systemInstruction}\n\n=== USER INPUT DATA ===\n${prompt}`
+      : prompt;
+
+    console.log(`[OLLAMA] Calling generate API with model: ${ollamaModel}`);
+
+    const requestBody = {
+      model: ollamaModel,
+      prompt: combinedPrompt,
+      stream: false,
+      options: {
+        temperature: 0.2 // keep diagnostics factual and conservative
+      }
+    };
+
+    // Force Ollama to output valid JSON if requested (Ollama native capability)
+    if (responseFormatJson) {
+      requestBody.format = "json";
+    }
+
+    const response = await fetch(`${ollamaBaseUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Ollama server returned error (${response.status}): ${errText}`);
+    }
+
+    const data = await response.json();
+    return data.response.trim();
+
+  } else {
+    // 2. OPENAI API CALLS (chat/completions)
+    if (isDemoMode) {
+      throw new Error('OpenAI key is missing (Running in Demo/Mock Mode)');
+    }
+
+    console.log(`[OPENAI] Calling completions API with model: ${openAIModel}`);
+
+    const messages = [];
+    if (systemInstruction) {
+      messages.push({ role: "system", content: systemInstruction });
+    }
+    messages.push({ role: "user", content: prompt });
+
+    const response = await openai.chat.completions.create({
+      model: openAIModel,
+      messages: messages,
+      temperature: responseFormatJson ? 0.1 : 0.2, // lower temperature for rigid structural outputs
+      response_format: responseFormatJson ? { type: "json_object" } : undefined
+    });
+
+    return response.choices[0].message.content.trim();
+  }
 }
 
 // ==========================================
@@ -95,7 +172,6 @@ function sanitizeObject(obj) {
 async function getDiskUsage() {
   try {
     if (process.platform === 'win32') {
-      // Clean PowerShell invocation to get C: drive stats in a parsing-safe layout
       const { stdout } = await execPromise(
         'powershell -Command "Get-PSDrive C | Select-Object Size, Used, Free | ConvertTo-Json"'
       );
@@ -112,7 +188,6 @@ async function getDiskUsage() {
         };
       }
     } else {
-      // Linux/Unix parser
       const { stdout } = await execPromise("df -k / | tail -1 | awk '{print $2, $3, $4, $5}'");
       const parts = stdout.trim().split(/\s+/);
       if (parts.length === 4) {
@@ -131,7 +206,6 @@ async function getDiskUsage() {
   } catch (err) {
     console.warn('[STATUS] Could not retrieve disk metrics dynamically. Falling back.', err.message);
   }
-  // Safe default mockup to present on visual components in sandbox/permissions failure states
   return {
     total: '256.0 GB',
     free: '112.5 GB',
@@ -239,7 +313,6 @@ function getMockAnalysis(logText = '') {
     };
   }
 
-  // Default Fallback Mock
   return {
     summary: "System log diagnostics report generic anomaly indicators with server config settings. Further technical trace diagnostics required.",
     severity: "Medium",
@@ -335,7 +408,6 @@ function getMockReport(logText = '', analysisObj) {
   const analysis = analysisObj || getMockAnalysis(logText);
   const severity = analysis.severity || "High";
   const causes = (analysis.rootCauses || ["System connection issue."]).join("\n- ");
-  const steps = (analysis.recommendedSteps || ["Check application binds."]).join("\n- ");
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
   return `# INCIDENT ANALYSIS REPORT
@@ -413,7 +485,7 @@ app.get('/api/status', async (req, res) => {
 
 /**
  * @route   POST /api/analyze-log
- * @desc    Analyze server logs using GenAI (OpenAI API or Local Mock)
+ * @desc    Analyze server logs using GenAI (OpenAI API, Ollama, or Local Mock)
  */
 app.post('/api/analyze-log', async (req, res) => {
   const { logText } = req.body;
@@ -426,7 +498,6 @@ app.post('/api/analyze-log', async (req, res) => {
 
   if (isDemoMode) {
     console.log('[DEMO] Generating mock log analysis...');
-    // Introduce short artificial delay to simulate real network round-trip experience
     await new Promise(resolve => setTimeout(resolve, 800));
     const rawMock = getMockAnalysis(logText);
     const sanitizedMock = sanitizeObject(rawMock);
@@ -434,15 +505,7 @@ app.post('/api/analyze-log', async (req, res) => {
   }
 
   try {
-    const promptWithLog = `${LOG_ANALYZER_PROMPT}\n\n=== LOG TEXT ===\n${logText}\n=== END OF LOG ===`;
-    
-    const response = await openai.chat.completions.create({
-      model: modelName,
-      messages: [{ role: "user", content: promptWithLog }],
-      temperature: 0.1, // low temperature for precise factual JSON outputs
-    });
-
-    const aiText = response.choices[0].message.content.trim();
+    const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
     
     // Clean up potential markdown formatting block wrapper from LLM
     let cleanJsonString = aiText;
@@ -456,8 +519,7 @@ app.post('/api/analyze-log', async (req, res) => {
     try {
       parsedResult = JSON.parse(cleanJsonString);
     } catch (jsonErr) {
-      console.error('[PARSE ERROR] Failed to parse JSON returned by OpenAI API:', cleanJsonString);
-      // Construct fallback JSON analysis
+      console.error('[PARSE ERROR] Failed to parse JSON returned by AI Model:', cleanJsonString);
       parsedResult = {
         summary: "Log diagnostic returned non-standard format. Summary extracted manually.",
         severity: "High",
@@ -506,15 +568,9 @@ app.post('/api/generate-commands', async (req, res) => {
 
   try {
     const analysisStr = typeof analysis === 'object' ? JSON.stringify(analysis) : analysis;
-    const prompt = `${COMMAND_GENERATOR_PROMPT}\n\n=== ORIGINAL LOG ===\n${logText}\n\n=== PRIOR ANALYSIS ===\n${analysisStr}`;
+    const userPrompt = `=== ORIGINAL LOG ===\n${logText}\n\n=== PRIOR ANALYSIS ===\n${analysisStr}`;
 
-    const response = await openai.chat.completions.create({
-      model: modelName,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2
-    });
-
-    const rawResponse = response.choices[0].message.content.trim();
+    const rawResponse = await generateAIResponse(userPrompt, COMMAND_GENERATOR_PROMPT, false);
     const { text: sanitizedText, wasSanitized } = sanitizeAIOutput(rawResponse);
 
     if (wasSanitized) {
@@ -558,15 +614,9 @@ app.post('/api/generate-report', async (req, res) => {
 
   try {
     const analysisStr = typeof analysis === 'object' ? JSON.stringify(analysis) : analysis;
-    const prompt = `${REPORT_GENERATOR_PROMPT}\n\n=== ORIGINAL LOG ===\n${logText}\n\n=== LOG ANALYSIS ===\n${analysisStr}`;
+    const userPrompt = `=== ORIGINAL LOG ===\n${logText}\n\n=== LOG ANALYSIS ===\n${analysisStr}`;
 
-    const response = await openai.chat.completions.create({
-      model: modelName,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3
-    });
-
-    const rawResponse = response.choices[0].message.content.trim();
+    const rawResponse = await generateAIResponse(userPrompt, REPORT_GENERATOR_PROMPT, false);
     const { text: sanitizedText } = sanitizeAIOutput(rawResponse);
 
     res.json({ reportMarkdown: sanitizedText });
@@ -585,6 +635,7 @@ app.listen(PORT, () => {
   console.log(`================================================================`);
   console.log(`  AI Ops Assistant Server is active!`);
   console.log(`  Local Endpoint: http://localhost:${PORT}`);
-  console.log(`  Mode:           ${isDemoMode ? 'DEMO/MOCK (No Key Needed)' : 'LIVE API (OpenAI active)'}`);
+  console.log(`  Provider:       ${aiProvider.toUpperCase()} (${isDemoMode ? 'DEMO/MOCK fallback active' : 'LIVE API active'})`);
+  console.log(`  Active Model:   ${aiProvider === 'openai' ? openAIModel : ollamaModel}`);
   console.log(`================================================================`);
 });

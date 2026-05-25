@@ -2,7 +2,7 @@
 
 **AI Ops Assistant** is a modern, professional web dashboard designed to help junior network technicians and system administrators safely diagnose system logs, review server health, generate educational troubleshooting playbooks, and draft formal incident reports. 
 
-The tool uses a **Node.js/Express backend** powered by **OpenAI GenAI APIs** (or local mock equivalents) and a **custom dark-slate enterprise frontend** designed with zero external runtime dependencies.
+The tool uses a **Node.js/Express backend** powered by **GenAI APIs (OpenAI or Ollama)** and a **custom dark-slate enterprise frontend** designed with zero external runtime dependencies.
 
 ---
 
@@ -13,6 +13,7 @@ The tool uses a **Node.js/Express backend** powered by **OpenAI GenAI APIs** (or
 3. **Safety-First Command Generator**: Generates safe, non-destructive check and verification scripts. Backed by system-prompt guidelines AND a backend regex gateway filter that blocks hazardous operations (e.g. `rm -rf`, `mkfs`, `dd`, `chmod 777 /`) and replaces them with warnings.
 4. **Professional Incident Report Compiler**: Outputs formal, client-ready markdown reports suitable for executive review.
 5. **No-Code Offline Demo Capability**: Operates in fully interactive mock mode if an API key is not supplied, allowing developers to immediately test typical incident templates (Nginx 502, SSH Bruteforce, Linux memory spikes, Apache 403 blocks).
+6. **Multi-Provider AI Core**: Supports both public **OpenAI API** and secure local **Ollama** model runtimes seamlessly.
 
 ---
 
@@ -25,8 +26,8 @@ The tool uses a **Node.js/Express backend** powered by **OpenAI GenAI APIs** (or
         [ GET /api/status ]      [ POST /api/analyze-log ]  [ POST /generate-* ]
                       |                     |                    |
                       v                     v                    v
-         [ Server Diagnostics ]     [ OpenAI LLM API ]   [ Safety Regular Expression Gateway ]
-         (RAM, Disk, Uptime)       (JSON Structured)     (Blocks destructive commands)
+         [ Server Diagnostics ]      [ GenAI Provider ]   [ Safety Regular Expression Gateway ]
+         (RAM, Disk, Uptime)       (OpenAI / Ollama API)  (Blocks destructive commands)
 ```
 
 ---
@@ -57,6 +58,7 @@ Follow these steps to set up and run the AI Ops Assistant on your local developm
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (Version 18+ recommended)
 - A modern web browser
+- *Optional:* [Ollama](https://ollama.com/) (If running models locally)
 
 ### 1. Backend Setup & Dependency Installation
 Navigate to the `backend/` folder and install packages:
@@ -70,17 +72,33 @@ Copy the `.env.example` file to create a `.env` configuration:
 ```bash
 cp .env.example .env
 ```
-Open the `.env` file in your preferred text editor and configure parameters:
+Open the `.env` file in your preferred text editor and choose your AI Provider:
+
+#### Option A: OpenAI Setup
 ```env
 PORT=3000
+AI_PROVIDER=openai
 OPENAI_API_KEY=your_actual_openai_api_key_here
 # Optional customization:
 # OPENAI_MODEL=gpt-4o-mini
-# OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
+#### Option B: Local Ollama Setup
+1. Ensure Ollama is running locally on your computer (`http://localhost:11434`).
+2. Pull your chosen diagnostic model (e.g., `llama3`, `mistral`, `qwen2.5-coder`):
+   ```bash
+   ollama pull llama3
+   ```
+3. Configure your `.env` file:
+   ```env
+   PORT=3000
+   AI_PROVIDER=ollama
+   OLLAMA_MODEL=llama3
+   # OLLAMA_BASE_URL=http://localhost:11434
+   ```
+
 > [!NOTE]
-> **Demo/Mock Mode:** If you do not have an active OpenAI API key, you can leave the `.env` file with placeholders. The backend will automatically run in **DEMO mode** using high-quality local mock playbooks, enabling complete testing of all features instantly.
+> **Demo/Mock Mode:** If you do not have an active OpenAI API key or Ollama instance running, you can leave the `.env` file with placeholders. The backend will automatically run in **DEMO mode** using high-quality local mock playbooks, enabling complete testing of all features instantly.
 
 ### 3. Start the Server
 Run the local dev command inside `backend/`:
@@ -92,7 +110,8 @@ You should see confirmation output in your terminal:
 ================================================================
   AI Ops Assistant Server is active!
   Local Endpoint: http://localhost:3000
-  Mode:           LIVE API (OpenAI active)
+  Provider:       OLLAMA (LIVE API active)
+  Active Model:   llama3
 ================================================================
 ```
 
