@@ -186,10 +186,9 @@ cat .env
 For stable `t3.micro`, use demo mode or external API. For Ollama mode, the file should be:
 
 ```env
-AI_PROVIDER=ollama
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:0.5b
-OPENAI_API_KEY=
+AI_PROVIDER=groq
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
 ```
 
