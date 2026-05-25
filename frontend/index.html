@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Ops Assistant - Enterprise System Diagnosis</title>
+  <!-- Modern clean typography from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Header -->
+  <header class="app-header">
+    <div class="header-logo">
+      <svg class="icon-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <path d="M12 8v4"/>
+        <path d="M12 16h.01"/>
+      </svg>
+      <h1>AI Ops Assistant</h1>
+      <span class="version-badge">MVP v1.0</span>
+    </div>
+    
+    <div class="header-status">
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span class="status-text">Server API Connected</span>
+      </div>
+      <div class="system-time">
+        <span id="header-clock">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Dashboard Grid -->
+  <main class="dashboard-grid">
+    
+    <!-- LEFT PANEL: Diagnostics Input & Host Health -->
+    <div class="panel-column left-column">
+      
+      <!-- Section 1: Server Health Monitor -->
+      <section class="dashboard-panel panel-health" aria-labelledby="health-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+            <line x1="6" y1="6" x2="6.01" y2="6"/>
+            <line x1="6" y1="18" x2="6.01" y2="18"/>
+          </svg>
+          <h2 id="health-title">Server Health Status</h2>
+          <span class="live-tag">LIVE POLL</span>
+        </div>
+        
+        <div class="health-metrics">
+          <div class="metric-card">
+            <span class="metric-label">Uptime</span>
+            <span class="metric-value" id="uptime-value">Loading...</span>
+          </div>
+          
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">Memory Utilization</span>
+              <span class="metric-value" id="memory-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="memory-fill" style="width: 0%"></div>
+            </div>
+            <span class="metric-subtext" id="memory-details">0.0 GB / 0.0 GB used</span>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">System Storage (C:/ or /)</span>
+              <span class="metric-value" id="disk-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="disk-fill" style="width: 0%"></div>
+            </div>
+            <span class="metric-subtext" id="disk-details">0.0 GB / 0.0 GB free</span>
+          </div>
+        </div>
+
+        <div class="health-footer">
+          <span>Last Polled: <span id="last-polled-time">Never</span></span>
+        </div>
+      </section>
+
+      <!-- Section 2: Log Analyzer Input -->
+      <section class="dashboard-panel panel-analyzer" aria-labelledby="analyzer-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <h2 id="analyzer-title">Log Analyzer Input</h2>
+        </div>
+
+        <div class="analyzer-body">
+          <div class="demo-logs-selector">
+            <label for="demo-select">Load Sample System Log:</label>
+            <div class="select-wrapper">
+              <select id="demo-select">
+                <option value="" disabled selected>-- Select a standard log template --</option>
+                <option value="nginx-502">Nginx 502 Bad Gateway Error</option>
+                <option value="ssh-bruteforce">SSH Brute-Force Scanning Attack</option>
+                <option value="linux-oom">Linux Kernel Out-of-Memory (OOM) Kill</option>
+                <option value="apache-forbidden">Apache 403 Directory Listing Forbidden</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="textarea-container">
+            <label for="log-input" class="sr-only">Paste system or application logs here</label>
+            <textarea 
+              id="log-input" 
+              placeholder="Paste raw log lines from syslog, journalctl, Nginx error.log, auth.log, or application stack traces here..."
+              spellcheck="false"
+            ></textarea>
+            <button id="clear-input-btn" class="btn-clear" title="Clear log content">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="clear-icon">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <button id="analyze-btn" class="btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon animate-pulse">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span>Analyze System Logs</span>
+          </button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- RIGHT PANEL: Interactive Outputs (Tabs or Multi-Section display) -->
+    <div class="panel-column right-column">
+      
+      <!-- Section 3: AI Troubleshooting Result -->
+      <section class="dashboard-panel panel-result" aria-labelledby="result-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+          <h2 id="result-title">AI Troubleshooting Result</h2>
+          <div id="severity-container" class="hidden">
+            <span class="badge" id="severity-badge">SEVERITY</span>
+          </div>
+        </div>
+
+        <div class="panel-content" id="analysis-content-area">
+          <!-- Initial Empty/Welcome State -->
+          <div class="empty-state" id="analysis-empty-state">
+            <svg class="empty-icon animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <h3>Ready for Analysis</h3>
+            <p>Paste server log files in the Log Analyzer panel on the left and click "Analyze System Logs" to trigger AI diagnostics.</p>
+          </div>
+
+          <!-- Loading State Spinner -->
+          <div class="loading-state hidden" id="analysis-loading-state">
+            <div class="spinner"></div>
+            <p>AI Engine compiling diagnostic telemetry...</p>
+          </div>
+
+          <!-- Diagnostic Results Data Panel -->
+          <div class="diagnostic-results hidden" id="analysis-results-panel">
+            
+            <div class="result-section-card summary-card">
+              <h4>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Incident Summary
+              </h4>
+              <p id="analysis-summary-text" class="summary-text"></p>
+            </div>
+
+            <div class="dual-columns">
+              <div class="result-section-card">
+                <h4>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                  Potential Root Causes
+                </h4>
+                <ul id="analysis-causes-list" class="styled-list"></ul>
+              </div>
+
+              <div class="result-section-card">
+                <h4>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  Recommended Troubleshooting Steps
+                </h4>
+                <ul id="analysis-steps-list" class="styled-list check-list"></ul>
+              </div>
+            </div>
+
+            <!-- Conditional Security warning block -->
+            <div class="result-section-card warning-card hidden" id="analysis-security-card">
+              <h4>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon alert-icon"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Security Warning
+              </h4>
+              <p id="analysis-security-text"></p>
+            </div>
+
+            <!-- Confidence and limitations card (As requested by User) -->
+            <div class="result-section-card limitations-card">
+              <h4>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="section-icon"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                AI Confidence & Limits
+              </h4>
+              <div class="limitations-body">
+                <div class="limit-metric">
+                  <span class="limit-label">AI Confidence Level:</span>
+                  <span class="badge" id="confidence-badge">High</span>
+                </div>
+                <div class="limit-block">
+                  <strong>Missing Diagnostic Context:</strong>
+                  <p id="analysis-missing-info"></p>
+                </div>
+                <div class="limit-block">
+                  <strong>Critical Manual Verification Items:</strong>
+                  <p id="analysis-manual-verify" class="verify-instruction"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Action buttons triggered post-analysis -->
+            <div class="analysis-action-bar">
+              <button id="gen-commands-btn" class="btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                <span>Generate Safe Commands</span>
+              </button>
+              <button id="gen-report-btn" class="btn-secondary">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>Generate Incident Report</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Safe Commands & Scripts Generator -->
+      <section class="dashboard-panel panel-commands hidden" id="commands-panel" aria-labelledby="commands-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"/>
+            <line x1="12" y1="19" x2="20" y2="19"/>
+          </svg>
+          <h2 id="commands-title">Semi-Automation Command Generator</h2>
+          <div class="safety-shield">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="shield-icon"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Auto-Execution Disabled (Read-Only)</span>
+          </div>
+        </div>
+
+        <div class="commands-body">
+          <div class="safety-banner-notice">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="banner-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <div>
+              <strong>Junior Administrator Notice:</strong> These diagnostic scripts inspect environment configurations. You must manually copy and run them in your server shell. No commands will be executed by this dashboard.
+            </div>
+          </div>
+
+          <div class="loading-state hidden" id="commands-loading-state">
+            <div class="spinner"></div>
+            <p>Creating safe diagnostics...</p>
+          </div>
+
+          <div class="commands-content-area hidden" id="commands-content">
+            <div class="code-terminal-header">
+              <span class="term-dot red"></span>
+              <span class="term-dot yellow"></span>
+              <span class="term-dot green"></span>
+              <span class="term-title">Safe Diagnostics Code Block</span>
+              <button class="btn-copy" id="copy-commands-btn" title="Copy scripts to clipboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="copy-icon" id="copy-cmd-svg"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span id="copy-cmd-text">Copy Script</span>
+              </button>
+            </div>
+            <pre class="terminal-box"><code id="commands-output-code"></code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Incident Report Output -->
+      <section class="dashboard-panel panel-report hidden" id="report-panel" aria-labelledby="report-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <h2 id="report-title">Incident Report Generator</h2>
+          <div class="report-actions-wrapper">
+            <button class="btn-text-action" id="copy-report-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="action-btn-icon" id="copy-rep-svg"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span id="copy-rep-text">Copy Report</span>
+            </button>
+            <button class="btn-text-action" id="download-report-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="action-btn-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Download (.md)</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="report-body">
+          <div class="loading-state hidden" id="report-loading-state">
+            <div class="spinner"></div>
+            <p>Compiling administrator incident report...</p>
+          </div>
+          <div class="report-content-area hidden" id="report-content">
+            <div class="report-paper" id="report-output-paper">
+              <!-- Report raw markdown parsed rendered here -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <strong>AI Ops Assistant</strong> - Educational System Administration Suite.
+    </div>
+    <div class="footer-right">
+      <span>Safety Layer Active</span>
+      <svg class="secure-badge-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+ami_id = "ami-0b5a4e51202cd98e5"
+subnet_id = "subnet-09c8855689e9e83bb"
+main_sg_id = "sg-02b9ad569879c055a"
+ec2_type = "t3.micro"
+ec2_name = "ai-ops-assistant.laura"
+keypair = "devops.school.level3.laura"
+aws_owner = "laura"
