@@ -2,9 +2,9 @@
 
 ## Overview
 
-AI Ops Assistant is a full-stack cloud-based application designed to help system administrators analyze logs, diagnose issues, and generate troubleshooting recommendations using AI.
+AI Ops Assistant is a cloud-based application designed to help system administrators analyze logs, diagnose issues, and generate troubleshooting recommendations using AI.
 
-The system is deployed on AWS EC2 and integrates a modern frontend, a Node.js backend, and an external AI provider (Groq) for real-time analysis.
+The application is deployed on AWS EC2 and combines a frontend dashboard, a Node.js backend, and an external AI provider (Groq) to deliver real-time insights.
 
 ---
 
@@ -15,137 +15,176 @@ http://YOUR_EC2_PUBLIC_DNS
 ---
 
 ## Architecture
-Browser (Frontend)
-↓
-Nginx (Reverse Proxy - Port 80)
-↓
-Node.js Backend (PM2 - Port 3000)
-↓
-Groq API (AI Processing)
+
+Browser → Nginx → Node.js (PM2) → Groq API
+
+- **Nginx** serves the frontend and proxies API requests  
+- **Node.js backend** processes requests and communicates with AI  
+- **Groq API** performs AI inference  
+- **PM2** ensures backend stability  
 
 ---
 
 ## Features
 
 - Real-time server monitoring (`/api/status`)
-- Log analysis using AI
+- AI-powered log analysis
 - Root cause identification
-- Recommended troubleshooting steps
-- Safe command generation (read-only)
+- Troubleshooting recommendations
+- Safe command suggestions (read-only)
 - Incident report generation
-- Interactive web dashboard
+- Interactive dashboard
 
 ---
 
-## Technologies Used
+## Tech Stack
 
-- **Cloud**: AWS EC2 (t3.micro)
-- **Infrastructure**: Terraform
-- **Backend**: Node.js + Express
-- **Process Manager**: PM2
-- **Frontend**: HTML, CSS, JavaScript
-- **Web Server**: Nginx (reverse proxy)
-- **AI Provider**: Groq API (OpenAI-compatible)
+- AWS EC2 (t3.micro)
+- Terraform (infrastructure provisioning)
+- Node.js + Express
+- PM2 (process manager)
+- Nginx (reverse proxy)
+- HTML / CSS / JavaScript
+- Groq API (AI provider)
 
 ---
 
-## Setup Instructions
+## Setup Guide
 
-### 1. Clone the repository
+### 1. Clone repository
 
 ```bash
 git clone https://github.com/YOUR_REPO.git
 cd ai-ops-assistant-aws
-
-### 2. Configure environment variables  
-
-Create a .env file in the backend/ folder:
-
+```
+2. Configure environment
+```
 cp backend/.env.example backend/.env
-
-Edit it:
-
+```
+Edit .env:
+```
 AI_PROVIDER=groq
 GROQ_API_KEY=your_groq_key_here
 GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
-
-3. Install backend dependencies
+```
+3. Install backend
+```
 cd backend
 npm install
-4. Start backend with PM2
+```
+4. Start backend
+```
 pm2 start server.js --name ai-ops-backend
 pm2 save
+```
 5. Configure Nginx
-
-Ensure Nginx proxies API requests:
+```
+Add:
 
 location /api/ {
     proxy_pass http://localhost:3000/api/;
 }
-
-Restart Nginx:
-
+```
+Restart:
+```
 sudo systemctl restart nginx
+```
 6. Deploy frontend
+```
 sudo cp -r frontend/* /usr/share/nginx/html/
+```
 Usage
 
-Open the application in your browser:
+Open:
 
 http://YOUR_EC2_PUBLIC_DNS
-Example log input
+
+Example log input:
+
 nginx: connect() failed (111: Connection refused) while connecting to upstream
 
-Click Analyze System Logs to receive AI-powered diagnostics.
+Click Analyze System Logs to get AI diagnostics.
 
-Known Limitations
-Requires an external AI API (Groq)
-No authentication system (educational project)
-Limited scalability on t3.micro instance
-No persistent storage for logs or reports
-Design Decisions
-Why not Ollama?
+## What Was Tried
 
-Initially, the project used Ollama for local AI inference.
+During development, multiple approaches were tested:
 
-However:
+Local AI with Ollama
+Installed Ollama on EC2
+Tested small models (qwen2.5:0.5b)
+Integrated API calls in backend
 
-t3.micro has limited RAM (~1GB)
-Running models locally caused:
-instability
-crashes
-disk pressure
-Solution
+Result:
+High memory usage
+Frequent crashes
+Server instability
+Disk pressure issues
+OpenAI API
+Attempted integration with OpenAI
+Encountered quota limitations
+Result:
+Not usable due to API limits
 
-The system was redesigned to use Groq API, which:
+# Several critical issues were identified and resolved:
+Infrastructure Issues
+EC2 instability due to low resources
+Fixed by removing local AI models
+Backend Issues
+Syntax errors breaking server
+Fixed using node --check and rollback
+Nginx Issues
+502 Bad Gateway → backend not running
+500 Internal Error → permission problems
+API routing issues (/api path mismatch)
+Frontend Issues
+Demo mode always active
+Fixed API endpoint from localhost → /api
+Git & Security
+.env accidentally included
+Fixed with .gitignore and key rotation
 
-Offloads AI computation externally
-Requires no local model hosting
-Improves stability and performance
-Security Considerations
-.env files are excluded from Git
-API keys are never committed
-Example environment file provided (.env.example)
-Reverse proxy prevents direct backend exposure
-Future Improvements
-Add user authentication
-Store logs and reports (database)
-Add role-based access control
-Improve UI/UX
-Add alerting/monitoring system
-Educational Purpose
+---
 
-This project demonstrates:
+# Final Solution
+The system was redesigned to:
+Remove local AI (Ollama)
+Use Groq API instead
+Keep backend lightweight
+Improve stability and scalability
 
-Cloud deployment (AWS)
+---
+
+# What Was Learned
+This project provided hands-on experience with:
+Cloud deployment (AWS EC2)
 Infrastructure as Code (Terraform)
 Reverse proxy configuration (Nginx)
-Backend API development
-AI integration
-Debugging and system recovery
+Backend API design (Node.js)
+AI integration (Groq / OpenAI-compatible APIs)
+Debugging production issues
+System stability and resource management
+Security best practices (API keys, .env)
+Limitations
+Requires external AI API (Groq)
+No authentication system
+Limited scalability (t3.micro)
+No persistent storage for logs
 
-Author
-Laura M
+---
 
-This project is for educational use.
+## Future Improvements
+Add authentication (login system)
+Store logs and reports in a database
+Improve UI/UX
+Add monitoring and alerting
+Deploy using Docker or Kubernetes
+Security
+.env files are not committed
+API keys are protected
+Backend is not directly exposed (via Nginx)
+
+---
+
+## Author
+Laura
