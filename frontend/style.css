@@ -1153,3 +1153,10 @@ button {
     justify-content: space-between;
   }
 }
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}

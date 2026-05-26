@@ -8,8 +8,9 @@
  * back to a local simulation engine to guarantee functional demonstrations.
  */
 
+const API_BASE_URL = "/api";
+
 // Host Configuration
-const API_BASE_URL = 'http://localhost:3000/api';
 
 // Live Server Log Templates
 const LOG_TEMPLATES = {
@@ -561,16 +562,34 @@ analyzeBtn.addEventListener('click', async () => {
 // Render Analysis Data structure dynamically
 function renderAnalysisData(data) {
   // 1. Severity Badge setup
-  severityBadge.textContent = `Severity: ${data.severity}`;
-  severityBadge.className = 'badge';
-  
-  const sev = (data.severity || 'Medium').toLowerCase();
-  if (sev === 'low') severityBadge.classList.add('badge-low');
-  else if (sev === 'medium') severityBadge.classList.add('badge-medium');
-  else if (sev === 'high') severityBadge.classList.add('badge-high');
-  else if (sev === 'critical') severityBadge.classList.add('badge-critical');
+
+let badgeText = "";
+let badgeClass = "badge";
+
+const sev = (data.severity || "medium").toLowerCase();
+
+if (sev === "low") {
+  badgeText = "✅ OK — No issue detected";
+  badgeClass += " badge-low";
+} 
+else if (sev === "medium") {
+  badgeText = "⚠️ Warning — Unknown command or needs checking";
+  badgeClass += " badge-medium";
+} 
+else if (sev === "high") {
+  badgeText = "❌ High — Error detected";
+  badgeClass += " badge-high";
+} 
+else if (sev === "critical") {
+  badgeText = "🚨 Critical — Immediate attention needed";
+  badgeClass += " badge-critical";
+}
+
+severityBadge.textContent = badgeText;
+severityBadge.className = badgeClass;
 
   severityContainer.classList.remove('hidden');
+
 
   // 2. Summary details
   summaryText.textContent = data.summary;
@@ -827,3 +846,35 @@ downloadReportBtn.addEventListener('click', () => {
   link.click();
   document.body.removeChild(link);
 });
+
+async function runQuickCheck(type) {
+  logInput.value = `Running ${type} check...`;
+  analyzeBtn.disabled = true;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/run-safe-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkType: type })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Safe check failed with HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    logInput.value = `Command:\n${data.command}\n\nOutput:\n${data.output}`;
+
+    analyzeBtn.disabled = false;
+    analyzeBtn.click();
+
+  } catch (error) {
+    analyzeBtn.disabled = false;
+    logInput.value = `Safe check failed:\n${error.message}`;
+  }
+}
+
+
+
+

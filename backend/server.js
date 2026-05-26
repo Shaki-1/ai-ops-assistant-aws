@@ -6,13 +6,14 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import OpenAI from 'openai';
 
+const execPromise = promisify(exec);
+
 import {
   LOG_ANALYZER_PROMPT,
   COMMAND_GENERATOR_PROMPT,
   REPORT_GENERATOR_PROMPT
 } from './prompts/systemPrompt.js';
 
-const execPromise = promisify(exec);
 
 // Load environment variables
 dotenv.config();
@@ -751,6 +752,41 @@ app.post('/api/generate-report', async (req, res) => {
     res.status(500).json({ 
       error: "Report generation failed.", 
       details: error.message 
+    });
+  }
+});
+
+app.post('/api/run-safe-check', async (req, res) => {
+  const { checkType } = req.body;
+
+  const safeChecks = {
+    nginx: 'systemctl status nginx --no-pager',
+    backend: 'pm2 status',
+    disk: 'df -h /',
+    memory: 'free -h'
+  };
+
+  if (!safeChecks[checkType]) {
+    return res.status(400).json({
+      error: 'Invalid check type.'
+    });
+  }
+
+  try {
+    const { stdout, stderr } = await execPromise(safeChecks[checkType], {
+      timeout: 5000
+    });
+
+    res.json({
+      checkType,
+      command: safeChecks[checkType],
+      output: stdout || stderr || 'No output returned.'
+    });
+  } catch (error) {
+    res.json({
+      checkType,
+      command: safeChecks[checkType],
+      output: error.stdout || error.stderr || error.message
     });
   }
 });
