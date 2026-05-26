@@ -75,6 +75,8 @@ const copyReportBtn = document.getElementById('copy-report-btn');
 const copyRepText = document.getElementById('copy-rep-text');
 const downloadReportBtn = document.getElementById('download-report-btn');
 
+const historyList = document.getElementById('history-list');
+
 let generatedCommandsText = "";
 let generatedReportText = "";
 
@@ -84,6 +86,74 @@ let generatedReportText = "";
 
 function getMockAnalysis(logText = '') {
   const text = logText.toLowerCase();
+
+  if (
+    text.includes('active (running)') ||
+    text.includes('status=0/success') ||
+    text.includes('status=0/success') ||
+    text.includes('enabled') ||
+    text.includes('online') ||
+    text.includes('http 200') ||
+    text.includes('success')
+  ) {
+    return {
+      summary: "No issue detected.",
+      severity: "Low",
+      rootCauses: [],
+      recommendedSteps: [],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "High",
+        missingInformation: null,
+        manualVerification: "No immediate manual verification required."
+      }
+    };
+  }
+
+  if (
+    text.includes('command not found') ||
+    text.includes('unknown command') ||
+    text.includes('not recognized') ||
+    text.includes('invalid option') ||
+    text.includes('no such file or directory')
+  ) {
+    return {
+      summary: "Invalid or unknown command.",
+      severity: "Medium",
+      rootCauses: ["The command may be misspelled, unavailable, or not installed on this system."],
+      recommendedSteps: ["Verify the command name and check whether the required package/service is installed."],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "Medium",
+        missingInformation: "The shell environment and installed packages are not fully known.",
+        manualVerification: "Run 'which <command>' or check package/service installation."
+      }
+    };
+  }
+
+  if (
+    text.includes('failed') ||
+    text.includes('error') ||
+    text.includes('denied') ||
+    text.includes('timeout') ||
+    text.includes('connection refused') ||
+    text.includes('inactive') ||
+    text.includes('dead') ||
+    text.includes('crash')
+  ) {
+    return {
+      summary: "An error was detected.",
+      severity: "High",
+      rootCauses: ["The output contains failure or error indicators."],
+      recommendedSteps: ["Inspect the related service status and logs for details."],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "High",
+        missingInformation: "Full logs and service configuration may be needed.",
+        manualVerification: "Check service logs with journalctl or application logs."
+      }
+    };
+  }
   
   if (text.includes('502') || text.includes('bad gateway') || text.includes('upstream')) {
     return {
@@ -527,6 +597,7 @@ analyzeBtn.addEventListener('click', async () => {
     const mockData = getMockAnalysis(rawLogText);
     activeAnalysisResult = mockData;
     renderAnalysisData(mockData);
+    saveHistoryEntry(rawLogText, mockData);
     return;
   }
 
@@ -546,6 +617,7 @@ analyzeBtn.addEventListener('click', async () => {
     
     // Compile and render the analysis result cards
     renderAnalysisData(data);
+saveHistoryEntry(rawLogText, data);
 
   } catch (error) {
     console.warn('[API FETCH FAILED] Direct backend unreachable. Triggering automatic local simulation.', error);
@@ -877,4 +949,52 @@ async function runQuickCheck(type) {
 
 
 
+async function saveHistoryEntry(input, result) {
+  const entry = {
+    input: input.slice(0, 300),
+    severity: result.severity || 'Unknown',
+    summary: result.summary || 'No summary'
+  };
 
+  try {
+    await fetch(`${API_BASE_URL}/history`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry)
+    });
+  } catch (error) {
+    console.warn('Could not save history file:', error);
+  }
+
+  renderHistory();
+}
+
+async function renderHistory() {
+  if (!historyList) return;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/history`);
+    const history = await response.json();
+
+    historyList.innerHTML = '';
+
+    if (history.length === 0) {
+      historyList.innerHTML = '<li>No history yet.</li>';
+      return;
+    }
+
+    history.slice(0, 5).forEach(item => {
+      const li = document.createElement('li');
+      const time = new Date(item.time).toLocaleTimeString();
+
+      li.textContent = `[${time}] ${item.input.slice(0, 80)} → ${item.severity}: ${item.summary}`;
+      historyList.appendChild(li);
+    });
+
+  } catch (error) {
+    historyList.innerHTML = '<li>Could not load history.</li>';
+  }
+}
+
+// Load history on page start
+renderHistory();

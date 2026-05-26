@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import os from 'os';
+import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import OpenAI from 'openai';
@@ -516,50 +517,7 @@ app.post('/api/analyze-log', async (req, res) => {
   }
 
   try {
-    const improvedPrompt = `
-You analyze system logs OR command outputs.
-
-INPUT:
-${logText}
-
-Your job:
-1. Detect if this is:
-   - Normal output (OK)
-   - Unknown command / invalid syntax
-   - Real error / failure
-
-2. Return ONLY JSON:
-
-{
-  "summary": "...",
-  "severity": "Low" | "Medium" | "High",
-  "rootCauses": ["..."],
-  "recommendedSteps": ["..."],
-  "securityWarnings": null,
-  "limitations": {
-    "confidenceLevel": "High",
-    "missingInformation": null,
-    "manualVerification": "..."
-  }
-}
-
-Rules:
-- If output contains "active (running)", "success", "HTTP 200", "OK":
-  → severity = "Low"
-  → summary = "No issue detected"
-
-- If output contains:
-  "command not found", "unknown command", "not recognized", "No such file"
-  → severity = "Medium"
-  → summary = "Invalid or unknown command"
-
-- If output contains:
-  "failed", "error", "denied", "timeout", "connection refused"
-  → severity = "High"
-  → summary = "An error was detected"
-`;
-
-const aiText = await generateAIResponse(improvedPrompt, "", true);
+const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
 
     // Clean up potential markdown formatting block wrapper from LLM
     let cleanJsonString = aiText;
@@ -641,6 +599,16 @@ Rules:
 - If output shows success, active (running), HTTP 200/301/302, reachable, or no errors → status = "OK"
 - If output shows failed, error, denied, timeout, connection refused → Warning or Critical
 `;
+
+
+
+
+
+
+
+
+
+
 
     const aiText = await generateAIResponse(userPrompt, "", true);
 
@@ -790,6 +758,59 @@ app.post('/api/run-safe-check', async (req, res) => {
     });
   }
 });
+
+
+
+
+// ==========================================
+// HISTORY STORAGE (NEW FEATURE)
+// ==========================================
+
+const HISTORY_FILE = './history.json';
+
+app.post('/api/history', async (req, res) => {
+  try {
+    const entry = req.body;
+
+    let history = [];
+    try {
+      const raw = await fs.promises.readFile(HISTORY_FILE, 'utf8');
+      history = JSON.parse(raw);
+    } catch {
+      history = [];
+    }
+
+    history.unshift({
+      time: new Date().toISOString(),
+      input: entry.input || '',
+      severity: entry.severity || 'Unknown',
+      summary: entry.summary || 'No summary'
+    });
+
+    history = history.slice(0, 50);
+
+    await fs.promises.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+
+    return res.json({ saved: true, count: history.length });
+  } catch (error) {
+    console.error('[HISTORY ERROR]', error);
+    return res.status(500).json({
+      error: 'Could not save history',
+      details: error.message
+    });
+  }
+});
+
+app.get('/api/history', async (req, res) => {
+  try {
+    const raw = await fs.promises.readFile(HISTORY_FILE, 'utf8');
+    return res.json(JSON.parse(raw));
+  } catch {
+    return res.json([]);
+  }
+});
+
+
 
 // Start Server
 app.listen(PORT, () => {

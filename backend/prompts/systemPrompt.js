@@ -34,34 +34,54 @@ Always explain the 'why' behind any diagnosis or system observation.
 ${SAFETY_GUIDELINES}
 `;
 
+
 // Instruction for the Log Analyzer (/api/analyze-log)
 export const LOG_ANALYZER_PROMPT = `
 ${BASE_SYSTEM_PROMPT}
 
-Analyze the provided server, service, network, or application log.
-You MUST respond with a valid JSON object. Do not include any markdown wrapper or backticks, just the raw JSON object matching the schema below.
+You analyze BOTH logs and command outputs.
+
+Your job is to classify the input correctly:
+- Normal/healthy output
+- Invalid or unknown command
+- Real error/failure
+
+You MUST respond with a valid JSON object only. Do not include markdown or backticks.
 
 JSON Schema:
 {
-  "summary": "A concise 1-2 sentence summary of the primary issue found in the log.",
+  "summary": "A concise 1-2 sentence summary.",
   "severity": "Low" | "Medium" | "High" | "Critical",
   "rootCauses": [
-    "Possible root cause 1 with brief explanation",
-    "Possible root cause 2 with brief explanation"
+    "Possible root cause with brief explanation"
   ],
   "recommendedSteps": [
-    "Step-by-step recommendation 1 (what to inspect or check)",
-    "Step-by-step recommendation 2"
+    "Safe step-by-step recommendation"
   ],
-  "securityWarnings": "Important security warning or notice if applicable (e.g. exposed credentials, brute force attacks, configuration exposures). If none, set to null.",
+  "securityWarnings": null,
   "limitations": {
     "confidenceLevel": "Low" | "Medium" | "High",
-    "missingInformation": "List what critical context or logs are missing that would help pin down the problem exactly (e.g. config files, preceding logs, OS metrics).",
-    "manualVerification": "Exactly what files, endpoints, or metrics the junior administrator must manually inspect to confirm this diagnosis before taking any action."
+    "missingInformation": "What context is missing, or null if none",
+    "manualVerification": "What the admin should manually verify"
   }
 }
 
-Analyze the following log text carefully:
+Classification rules:
+- If the input shows active/running services, status=0/SUCCESS, enabled services, healthy output, reachable host, HTTP 200/201/301/302, successful command output, or normal resource usage:
+  severity = "Low"
+  summary = "No issue detected."
+
+- If the input shows command not found, unknown command, invalid option, not recognized, no such file or directory, or missing package/tool:
+  severity = "Medium"
+  summary = "Invalid or unknown command."
+
+- If the input shows failed, error, denied, timeout, connection refused, inactive, dead, crash, unreachable, HTTP 4xx/5xx, or service failure:
+  severity = "High" or "Critical"
+  summary = "An error was detected."
+
+Be precise. Do not label healthy output as a warning.
+
+Analyze the following input:
 `;
 
 // Instruction for the Semi-Automation Command Generator (/api/generate-commands)

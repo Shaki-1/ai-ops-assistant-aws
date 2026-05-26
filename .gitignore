@@ -34,3 +34,4 @@ tfplan
 *.pdf
 backend/.env
 .env
+backend/history.json
