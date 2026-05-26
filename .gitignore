@@ -36,3 +36,7 @@ backend/.env
 .env
 backend/history.json
 backend/history.json
+
+backend/history.json
+duckdns.sh
+backend/package-lock.json
