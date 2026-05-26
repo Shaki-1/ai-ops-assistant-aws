@@ -35,3 +35,4 @@ tfplan
 backend/.env
 .env
 backend/history.json
+backend/history.json
