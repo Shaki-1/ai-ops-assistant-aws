@@ -204,6 +204,13 @@
               <p id="analysis-summary-text" class="summary-text"></p>
             </div>
 
+<div class="result-section-card timeline-card">
+  <h4>
+    AI Incident Timeline
+  </h4>
+  <div id="analysis-timeline" class="timeline-list"></div>
+</div>
+
             <div class="dual-columns">
               <div class="result-section-card">
                 <h4>
@@ -275,6 +282,7 @@
 <section class="dashboard-panel panel-history" id="history-panel">
   <div class="panel-header">
     <h2>Command History</h2>
+<button class="btn-secondary" onclick="window.renderHistory()">Refresh History</button>
   </div>
 
   <div class="panel-content">

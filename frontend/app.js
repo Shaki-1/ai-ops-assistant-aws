@@ -58,6 +58,8 @@ const confidenceBadge = document.getElementById('confidence-badge');
 const missingInfoText = document.getElementById('analysis-missing-info');
 const manualVerifyText = document.getElementById('analysis-manual-verify');
 
+const timelineList = document.getElementById('analysis-timeline');
+
 const genCommandsBtn = document.getElementById('gen-commands-btn');
 const commandsPanel = document.getElementById('commands-panel');
 const commandsLoadingState = document.getElementById('commands-loading-state');
@@ -666,6 +668,27 @@ severityBadge.className = badgeClass;
   // 2. Summary details
   summaryText.textContent = data.summary;
 
+// 2b. AI Incident Timeline
+if (timelineList) {
+  timelineList.innerHTML = "";
+
+  if (data.timeline && data.timeline.length > 0) {
+    data.timeline.forEach(step => {
+      const item = document.createElement('div');
+      item.className = `timeline-item timeline-${step.status || 'info'}`;
+
+      item.innerHTML = `
+        <strong>${step.title || 'Timeline step'}</strong>
+        <p>${step.description || ''}</p>
+      `;
+
+      timelineList.appendChild(item);
+    });
+  } else {
+    timelineList.innerHTML = "<p>No timeline available for this analysis.</p>";
+  }
+}
+
   // 3. Potential causes list
   causesList.innerHTML = "";
   if (data.rootCauses && data.rootCauses.length > 0) {
@@ -966,10 +989,14 @@ async function saveHistoryEntry(input, result) {
     console.warn('Could not save history file:', error);
   }
 
+// Load history on page start
   renderHistory();
+// Allow HTML button onclick to use this function
+window.renderHistory = renderHistory;
 }
 
 async function renderHistory() {
+
   if (!historyList) return;
 
   try {
@@ -983,13 +1010,22 @@ async function renderHistory() {
       return;
     }
 
-    history.slice(0, 5).forEach(item => {
-      const li = document.createElement('li');
-      const time = new Date(item.time).toLocaleTimeString();
+history.slice(0, 5).forEach(item => {
+  const li = document.createElement('li');
+  const time = new Date(item.time).toLocaleTimeString();
 
-      li.textContent = `[${time}] ${item.input.slice(0, 80)} → ${item.severity}: ${item.summary}`;
-      historyList.appendChild(li);
-    });
+  li.textContent = `[${time}] ${item.input.slice(0, 80)} → ${item.severity}: ${item.summary}`;
+  li.style.cursor = 'pointer';
+
+  li.addEventListener('click', () => {
+    logInput.value = item.input;
+    logInput.focus();
+    analyzeBtn.click();
+  });
+
+  historyList.appendChild(li);
+});
+
 
   } catch (error) {
     historyList.innerHTML = '<li>Could not load history.</li>';
@@ -998,3 +1034,5 @@ async function renderHistory() {
 
 // Load history on page start
 renderHistory();
+window.renderHistory = renderHistory;
+

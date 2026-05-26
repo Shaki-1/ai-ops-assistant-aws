@@ -58,6 +58,23 @@ JSON Schema:
   "recommendedSteps": [
     "Safe step-by-step recommendation"
   ],
+"timeline": [
+  {
+    "title": "Input received",
+    "description": "The command output or log was submitted for analysis.",
+    "status": "info"
+  },
+  {
+    "title": "Diagnosis",
+    "description": "The AI classified the result as healthy, unknown command, or error.",
+    "status": "success" | "warning" | "danger" | "info"
+  },
+  {
+    "title": "Next action",
+    "description": "The safest recommended verification or troubleshooting step.",
+    "status": "info"
+  }
+],
   "securityWarnings": null,
   "limitations": {
     "confidenceLevel": "Low" | "Medium" | "High",
@@ -80,6 +97,12 @@ Classification rules:
   summary = "An error was detected."
 
 Be precise. Do not label healthy output as a warning.
+
+Always include a "timeline" array with 3 to 5 steps.
+Use status values only from: "success", "warning", "danger", "info".
+For healthy output, use at least one "success" step.
+For invalid commands, use "warning".
+For real errors, use "danger".
 
 Analyze the following input:
 `;
