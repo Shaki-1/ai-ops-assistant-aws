@@ -45,6 +45,14 @@ if (aiProvider === 'openai') {
   } else {
     console.warn('[WARNING] Running in DEMO/MOCK mode because no valid OpenAI key is configured.');
   }
+} else if (aiProvider === 'groq') {
+  openai = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: 'https://api.groq.com/openai/v1'
+  });
+
+  console.log(`[INIT] GenAI configured for GROQ using model: ${process.env.GROQ_MODEL || 'llama-3.1-8b-instant'}`);
+
 } else if (aiProvider === 'ollama') {
   console.log(`[INIT] GenAI configured for OLLAMA at ${ollamaBaseUrl} using model: ${ollamaModel}`);
 } else {
@@ -107,7 +115,9 @@ async function generateAIResponse(prompt, systemInstruction = '', responseFormat
     messages.push({ role: "user", content: prompt });
 
     const response = await openai.chat.completions.create({
-      model: openAIModel,
+      model: aiProvider === 'groq'
+  ? (process.env.GROQ_MODEL || 'llama-3.1-8b-instant')
+  : openAIModel,
       messages: messages,
       temperature: responseFormatJson ? 0.1 : 0.2, // lower temperature for rigid structural outputs
       response_format: responseFormatJson ? { type: "json_object" } : undefined
@@ -505,13 +515,57 @@ app.post('/api/analyze-log', async (req, res) => {
   }
 
   try {
-    const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
+    const improvedPrompt = `
+You analyze system logs OR command outputs.
+
+INPUT:
+${logText}
+
+Your job:
+1. Detect if this is:
+   - Normal output (OK)
+   - Unknown command / invalid syntax
+   - Real error / failure
+
+2. Return ONLY JSON:
+
+{
+  "summary": "...",
+  "severity": "Low" | "Medium" | "High",
+  "rootCauses": ["..."],
+  "recommendedSteps": ["..."],
+  "securityWarnings": null,
+  "limitations": {
+    "confidenceLevel": "High",
+    "missingInformation": null,
+    "manualVerification": "..."
+  }
+}
+
+Rules:
+- If output contains "active (running)", "success", "HTTP 200", "OK":
+  → severity = "Low"
+  → summary = "No issue detected"
+
+- If output contains:
+  "command not found", "unknown command", "not recognized", "No such file"
+  → severity = "Medium"
+  → summary = "Invalid or unknown command"
+
+- If output contains:
+  "failed", "error", "denied", "timeout", "connection refused"
+  → severity = "High"
+  → summary = "An error was detected"
+`;
+
+const aiText = await generateAIResponse(improvedPrompt, "", true);
 
     // Clean up potential markdown formatting block wrapper from LLM
     let cleanJsonString = aiText;
     if (cleanJsonString.startsWith("```json")) {
       cleanJsonString = cleanJsonString.replace(/^```json/, "").replace(/```$/, "").trim();
     } else if (cleanJsonString.startsWith("```")) {
+
       cleanJsonString = cleanJsonString.replace(/^```/, "").replace(/```$/, "").trim();
     }
 
