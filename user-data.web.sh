@@ -58,13 +58,6 @@ systemctl restart nginx
 
 cat > /home/ec2-user/duckdns.sh <<DUCKEOF
 
-certbot --nginx \
-  --non-interactive \
-  --agree-tos \
-  --redirect \
-  -m admin@shaki-aiops.duckdns.org \
-  -d ${duckdns_domain}.duckdns.org
-
 #!/bin/bash
 curl "https://www.duckdns.org/update?domains=${duckdns_domain}&token=${duckdns_token}&ip=" -o /home/ec2-user/duckdns.log
 DUCKEOF
@@ -73,3 +66,11 @@ chmod +x /home/ec2-user/duckdns.sh
 chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
 
 /home/ec2-user/duckdns.sh
+
+
+certbot --nginx \
+  --non-interactive \
+  --agree-tos \
+  --redirect \
+  -m admin@shaki-aiops.duckdns.org \
+  -d ${duckdns_domain}.duckdns.org
