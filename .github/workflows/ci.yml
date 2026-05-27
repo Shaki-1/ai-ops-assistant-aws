@@ -1,0 +1,38 @@
+name: CI Validation
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    name: Validate Project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform format check
+        run: terraform fmt -check
+
+      - name: Terraform validation
+        run: terraform init -backend=false && terraform validate
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Check backend syntax
+        working-directory: backend
+        run: node --check server.js
