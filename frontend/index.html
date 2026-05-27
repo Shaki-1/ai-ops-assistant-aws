@@ -407,6 +407,47 @@
         <button id="back-to-analyzer-btn" class="btn-secondary">Back to Analyzer</button>
       </div>
 
+      <div class="ops-metrics-grid" aria-label="Backend operational metrics">
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">API Requests</span>
+          <strong id="metric-api-requests">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">Failed Requests</span>
+          <strong id="metric-failed-requests">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">Avg Latency</span>
+          <strong id="metric-average-latency">-- ms</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">AI Success</span>
+          <strong id="metric-ai-success">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">AI Failed</span>
+          <strong id="metric-ai-failed">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">Backend Uptime</span>
+          <strong id="metric-backend-uptime">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">Node.js</span>
+          <strong id="metric-node-version">--</strong>
+        </div>
+        <div class="ops-metric-card ops-metric-card-wide">
+          <span class="ops-metric-label">Host / Platform</span>
+          <strong id="metric-host-platform">--</strong>
+          <span class="ops-metric-subtext" id="metric-backend-status">Backend status: --</span>
+        </div>
+        <div class="ops-metric-card ops-metric-card-wide">
+          <span class="ops-metric-label">Process Memory</span>
+          <strong id="metric-process-memory">--</strong>
+          <span class="ops-metric-subtext" id="metric-process-heap">Heap: --</span>
+        </div>
+      </div>
+
       <div class="metrics-charts metrics-dashboard-grid" aria-label="Live resource usage charts">
         <div class="chart-card">
           <div class="chart-card-header">

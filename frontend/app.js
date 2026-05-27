@@ -100,6 +100,17 @@ const metricsError = document.getElementById('metrics-error');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
+const metricApiRequests = document.getElementById('metric-api-requests');
+const metricFailedRequests = document.getElementById('metric-failed-requests');
+const metricAverageLatency = document.getElementById('metric-average-latency');
+const metricAiSuccess = document.getElementById('metric-ai-success');
+const metricAiFailed = document.getElementById('metric-ai-failed');
+const metricBackendUptime = document.getElementById('metric-backend-uptime');
+const metricNodeVersion = document.getElementById('metric-node-version');
+const metricHostPlatform = document.getElementById('metric-host-platform');
+const metricBackendStatus = document.getElementById('metric-backend-status');
+const metricProcessMemory = document.getElementById('metric-process-memory');
+const metricProcessHeap = document.getElementById('metric-process-heap');
 
 const demoSelect = document.getElementById('demo-select');
 const logInput = document.getElementById('log-input');
@@ -663,6 +674,78 @@ function updateMetricValue(element, value) {
   }
 }
 
+function formatCount(value) {
+  return Number.isFinite(Number(value)) ? Number(value).toLocaleString() : '--';
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes);
+
+  if (!Number.isFinite(value)) {
+    return '--';
+  }
+
+  if (value >= 1024 ** 3) {
+    return `${(value / 1024 ** 3).toFixed(1)} GB`;
+  }
+
+  return `${(value / 1024 ** 2).toFixed(1)} MB`;
+}
+
+function formatUptime(seconds) {
+  const totalSeconds = Number(seconds);
+
+  if (!Number.isFinite(totalSeconds)) {
+    return '--';
+  }
+
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  }
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+
+  return `${minutes}m`;
+}
+
+function setMetricText(element, value) {
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function updateOperationalMetrics(metrics) {
+  const requests = metrics.requests || {};
+  const aiAnalyses = metrics.aiAnalyses || {};
+  const runtime = metrics.runtime || {};
+  const backendStatus = runtime.backendStatus || {};
+  const processMemory = metrics.processMemory || {};
+
+  setMetricText(metricApiRequests, formatCount(requests.total));
+  setMetricText(metricFailedRequests, formatCount(requests.failed));
+  setMetricText(metricAverageLatency, `${Number(requests.averageLatencyMs || 0).toFixed(1)} ms`);
+  setMetricText(metricAiSuccess, formatCount(aiAnalyses.successful));
+  setMetricText(metricAiFailed, formatCount(aiAnalyses.failed));
+  setMetricText(metricBackendUptime, formatUptime(runtime.uptimeSeconds));
+  setMetricText(metricNodeVersion, runtime.nodeVersion || '--');
+  setMetricText(metricHostPlatform, `${runtime.hostname || '--'} / ${runtime.platform || '--'}`);
+  setMetricText(
+    metricBackendStatus,
+    `Backend status: ${backendStatus.status || '--'}${backendStatus.pm2Managed ? ` via PM2 #${backendStatus.pm2Id}` : ' (direct process)'}`
+  );
+  setMetricText(metricProcessMemory, `RSS ${formatBytes(processMemory.rssBytes)}`);
+  setMetricText(
+    metricProcessHeap,
+    `Heap ${formatBytes(processMemory.heapUsedBytes)} / ${formatBytes(processMemory.heapTotalBytes)} (${Number(processMemory.heapUsedPercent || 0).toFixed(1)}%)`
+  );
+}
+
 async function pollMetrics() {
   const token = localStorage.getItem('authToken');
 
@@ -695,6 +778,8 @@ async function pollMetrics() {
     const cpu = Number(metrics.cpuLoadPercent);
     const ram = Number(metrics.memoryUsagePercent);
     const disk = Number(metrics.diskUsagePercent);
+
+    updateOperationalMetrics(metrics);
 
     appendMetricPoint(metricsCharts.cpu, pointLabel, cpu);
     appendMetricPoint(metricsCharts.ram, pointLabel, ram);

@@ -27,9 +27,38 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
 
+const apiRuntimeMetrics = {
+  totalRequests: 0,
+  failedRequests: 0,
+  totalLatencyMs: 0,
+  successfulAIAnalyses: 0,
+  failedAIAnalyses: 0
+};
+
 // Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    return next();
+  }
+
+  const startedAt = process.hrtime.bigint();
+
+  res.on('finish', () => {
+    const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+
+    apiRuntimeMetrics.totalRequests += 1;
+    apiRuntimeMetrics.totalLatencyMs += elapsedMs;
+
+    if (res.statusCode >= 400) {
+      apiRuntimeMetrics.failedRequests += 1;
+    }
+  });
+
+  next();
+});
 
 // Determine AI Provider configuration
 const aiProvider = (process.env.AI_PROVIDER || 'openai').toLowerCase();
@@ -261,6 +290,17 @@ async function getCpuLoadPercent() {
   }
 
   return Number((((totalDelta - idleDelta) / totalDelta) * 100).toFixed(1));
+}
+
+function getBackendProcessStatus() {
+  const pm2Id = process.env.pm_id ?? process.env.PM2_ID;
+
+  return {
+    status: 'running',
+    pm2Managed: pm2Id !== undefined,
+    pm2Id: pm2Id !== undefined ? String(pm2Id) : null,
+    processId: process.pid
+  };
 }
 
 // ==========================================
@@ -603,11 +643,40 @@ app.get('/api/metrics', authenticateToken, async (req, res) => {
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     const dynamicDisk = await getDiskUsage();
+    const processMemory = process.memoryUsage();
+    const averageLatencyMs = apiRuntimeMetrics.totalRequests > 0
+      ? apiRuntimeMetrics.totalLatencyMs / apiRuntimeMetrics.totalRequests
+      : 0;
 
     res.json({
       cpuLoadPercent: await getCpuLoadPercent(),
       memoryUsagePercent: Number(((usedMem / totalMem) * 100).toFixed(1)),
       diskUsagePercent: parseUsagePercent(dynamicDisk.percentUsed),
+      runtime: {
+        uptimeSeconds: Math.floor(process.uptime()),
+        nodeVersion: process.version,
+        platform: process.platform,
+        hostname: os.hostname(),
+        backendStatus: getBackendProcessStatus()
+      },
+      processMemory: {
+        rssBytes: processMemory.rss,
+        heapUsedBytes: processMemory.heapUsed,
+        heapTotalBytes: processMemory.heapTotal,
+        externalBytes: processMemory.external,
+        heapUsedPercent: processMemory.heapTotal
+          ? Number(((processMemory.heapUsed / processMemory.heapTotal) * 100).toFixed(1))
+          : 0
+      },
+      requests: {
+        total: apiRuntimeMetrics.totalRequests,
+        failed: apiRuntimeMetrics.failedRequests,
+        averageLatencyMs: Number(averageLatencyMs.toFixed(1))
+      },
+      aiAnalyses: {
+        successful: apiRuntimeMetrics.successfulAIAnalyses,
+        failed: apiRuntimeMetrics.failedAIAnalyses
+      },
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -626,6 +695,7 @@ app.post('/api/analyze-log', authenticateToken, async (req, res) => {
   const { logText } = req.body;
 
   if (!logText || logText.trim() === "") {
+    apiRuntimeMetrics.failedAIAnalyses += 1;
     return res.status(400).json({ error: "Log text cannot be empty." });
   }
 
@@ -636,6 +706,7 @@ app.post('/api/analyze-log', authenticateToken, async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 800));
     const rawMock = getMockAnalysis(logText);
     const sanitizedMock = sanitizeObject(rawMock);
+    apiRuntimeMetrics.successfulAIAnalyses += 1;
     return res.json(sanitizedMock);
   }
 
@@ -671,10 +742,12 @@ const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
     }
 
     const sanitizedResult = sanitizeObject(parsedResult);
+    apiRuntimeMetrics.successfulAIAnalyses += 1;
     res.json(sanitizedResult);
 
   } catch (error) {
     console.error('[API ERROR /api/analyze-log]', error);
+    apiRuntimeMetrics.failedAIAnalyses += 1;
     res.status(500).json({ 
       error: "GenAI log analysis failed.", 
       details: error.message 

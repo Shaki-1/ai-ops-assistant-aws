@@ -286,6 +286,58 @@ body {
   margin-bottom: 0.35rem;
 }
 
+.ops-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.ops-metric-card {
+  min-width: 0;
+  padding: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="light"] .ops-metric-card {
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.07);
+}
+
+.ops-metric-card-wide {
+  grid-column: span 2;
+}
+
+.ops-metric-label {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.45rem;
+}
+
+.ops-metric-card strong {
+  display: block;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: clamp(1rem, 1.4vw, 1.35rem);
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ops-metric-subtext {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-top: 0.45rem;
+  overflow-wrap: anywhere;
+}
+
 .panel-column {
   display: flex;
   flex-direction: column;
@@ -1405,6 +1457,10 @@ button {
   .metrics-dashboard-grid {
     grid-template-columns: 1fr;
   }
+
+  .ops-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   
   .app-header {
     flex-direction: column;
@@ -1637,6 +1693,14 @@ body::before {
 
   .metrics-dashboard-grid .chart-frame {
     height: 220px;
+  }
+
+  .ops-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-metric-card-wide {
+    grid-column: span 1;
   }
 
   .quick-actions {
