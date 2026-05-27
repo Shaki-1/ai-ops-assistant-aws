@@ -1,7 +1,7 @@
 #!/bin/bash
 
 dnf update -y
-dnf install -y nginx git nodejs20 npm
+dnf install -y nginx git nodejs20 npm certbot python3-certbot-nginx
 
 systemctl enable nginx
 systemctl start nginx
@@ -30,7 +30,7 @@ env PATH=$PATH:/usr/bin pm2 save
 cat > /etc/nginx/conf.d/ai-ops-assistant.conf <<NGINXEOF
 server {
     listen 80;
-    server_name _;
+    server_name ${duckdns_domain}.duckdns.org;
 
     root /home/ec2-user/ai-ops-assistant-aws/frontend;
     index index.html;
@@ -53,6 +53,14 @@ rm -f /etc/nginx/conf.d/default.conf
 systemctl restart nginx
 
 cat > /home/ec2-user/duckdns.sh <<DUCKEOF
+
+certbot --nginx \
+  --non-interactive \
+  --agree-tos \
+  --redirect \
+  -m admin@shaki-aiops.duckdns.org \
+  -d ${duckdns_domain}.duckdns.org
+
 #!/bin/bash
 curl "https://www.duckdns.org/update?domains=${duckdns_domain}&token=${duckdns_token}&ip=" -o /home/ec2-user/duckdns.log
 DUCKEOF
