@@ -33,17 +33,17 @@
 
   <!-- App Header -->
   <header class="app-header">
-    <div class="header-logo">
-      <svg class="icon-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <path d="M12 8v4"/>
-        <path d="M12 16h.01"/>
-      </svg>
-      <h1>AI Ops Assistant</h1>
-      <span class="version-badge">MVP v1.0</span>
-<button id="logout-btn" class="btn-secondary">
-  Logout
-</button>
+    <div class="header-left">
+      <div class="header-logo">
+        <svg class="icon-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M12 8v4"/>
+          <path d="M12 16h.01"/>
+        </svg>
+        <h1>AI Ops Assistant</h1>
+        <span class="version-badge">MVP v1.0</span>
+      </div>
+      <button id="logout-btn" class="btn-secondary">Logout</button>
     </div>
     
     <div class="header-status">
@@ -187,27 +187,15 @@
           </div>
 
           <button id="analyze-btn" class="btn-primary">
-  <span>Analyze System Logs</span>
-</button>
+            <span>Analyze System Logs</span>
+          </button>
 
-<!-- 🔽 Quick Troubleshooting Buttons -->
-<div class="quick-actions">
-  <button class="btn-secondary" onclick="runQuickCheck('nginx')">
-    Check Nginx
-  </button>
-
-  <button class="btn-secondary" onclick="runQuickCheck('backend')">
-    Check Backend
-  </button>
-
-  <button class="btn-secondary" onclick="runQuickCheck('disk')">
-    Check Disk
-  </button>
-
-  <button class="btn-secondary" onclick="runQuickCheck('memory')">
-    Check Memory
-  </button>
-</div>
+          <div class="quick-actions">
+            <button class="btn-secondary" onclick="runQuickCheck('nginx')">Check Nginx</button>
+            <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
+            <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
+            <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
+          </div>
 
         </div>
       </section>
@@ -338,7 +326,7 @@
 <section class="dashboard-panel panel-history" id="history-panel">
   <div class="panel-header">
     <h2>Command History</h2>
-<button class="btn-secondary" onclick="window.renderHistory()">Refresh History</button>
+    <button class="btn-secondary panel-header-action" onclick="window.renderHistory()">Refresh History</button>
   </div>
 
   <div class="panel-content">
