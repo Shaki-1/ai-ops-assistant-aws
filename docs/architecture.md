@@ -2,21 +2,21 @@
 
 ```mermaid
 flowchart TD
-    User[User Browser] --> DuckDNS[DuckDNS Domain]
-    DuckDNS --> HTTPS[HTTPS / Let's Encrypt]
-    HTTPS --> Nginx[Nginx Reverse Proxy]
+    User["User Browser"] --> DuckDNS["DuckDNS Domain"]
+    DuckDNS --> HTTPS["HTTPS / Lets Encrypt"]
+    HTTPS --> Nginx["Nginx Reverse Proxy"]
 
-    Nginx --> Frontend[Static Frontend Dashboard]
-    Nginx --> API[Node.js Express Backend]
+    Nginx --> Frontend["Static Frontend Dashboard"]
+    Nginx --> API["Node.js Express Backend"]
 
-    API --> PM2[PM2 Process Manager]
-    API --> Groq[Groq AI API]
+    API --> PM2["PM2 Process Manager"]
+    API --> Groq["Groq AI API"]
 
-    Terraform[Terraform] --> EC2[AWS EC2 Instance]
+    Terraform["Terraform"] --> EC2["AWS EC2 Instance"]
     EC2 --> Nginx
     EC2 --> API
-    EC2 --> DuckScript[DuckDNS Update Script]
-    EC2 --> Certbot[Certbot HTTPS Setup]
+    EC2 --> DuckScript["DuckDNS Update Script"]
+    EC2 --> Certbot["Certbot HTTPS Setup"]
 ```md
 
 ## Request Flow
