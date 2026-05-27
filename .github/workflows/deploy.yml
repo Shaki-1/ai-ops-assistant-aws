@@ -1,0 +1,33 @@
+name: Deploy AI Ops Assistant
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+
+          script: |
+            cd /home/ec2-user/ai-ops-assistant-aws
+
+            git pull origin main
+
+            cd backend
+            npm install
+
+            pm2 restart ai-ops-backend
+            pm2 save
+
+            sudo systemctl restart nginx
+
+            curl -f http://localhost:3000/api/status
