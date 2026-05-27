@@ -68,7 +68,9 @@ DUCKEOF
 
 chmod +x /home/ec2-user/duckdns.sh
 chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
-
+touch /home/ec2-user/duckdns.log
+chown ec2-user:ec2-user /home/ec2-user/duckdns.log
+chmod 664 /home/ec2-user/duckdns.log
 /home/ec2-user/duckdns.sh
 
 mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
