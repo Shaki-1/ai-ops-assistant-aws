@@ -19,6 +19,14 @@ The infrastructure is fully reproducible and can be destroyed and rebuilt automa
 
 ---
 
+## Architecture Documentation
+
+Detailed infrastructure diagram and deployment flow:
+
+- [Architecture Diagram](docs/architecture.md)
+
+---
+
 # Live Deployment
 
 Example production URL:
