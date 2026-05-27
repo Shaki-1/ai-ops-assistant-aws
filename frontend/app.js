@@ -10,6 +10,45 @@
 
 const API_BASE_URL = "/api";
 
+const authToken = localStorage.getItem('authToken');
+
+const loginScreen = document.getElementById('login-screen');
+const loginForm = document.getElementById('login-form');
+const loginError = document.getElementById('login-error');
+
+if (authToken) {
+  loginScreen.classList.add('hidden');
+}
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  loginError.classList.add('hidden');
+
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+
+    const data = await response.json();
+
+    localStorage.setItem('authToken', data.token);
+    loginScreen.classList.add('hidden');
+
+  } catch (error) {
+    loginError.classList.remove('hidden');
+  }
+});
+
 // Host Configuration
 
 // Live Server Log Templates
@@ -605,18 +644,23 @@ analyzeBtn.addEventListener('click', async () => {
 
   try {
     const response = await fetch(`${API_BASE_URL}/analyze-log`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ logText: rawLogText })
-    });
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+  },
+  body: JSON.stringify({
+    logText: rawLogText
+  })
+});
 
-    if (!response.ok) {
-      throw new Error(`Server returned HTTP ${response.status}`);
-    }
+if (!response.ok) {
+  throw new Error(`Server returned HTTP ${response.status}`);
+}
 
     const data = await response.json();
     activeAnalysisResult = data;
-    
+
     // Compile and render the analysis result cards
     renderAnalysisData(data);
 saveHistoryEntry(rawLogText, data);
@@ -771,17 +815,20 @@ genCommandsBtn.addEventListener('click', async () => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/generate-commands`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        logText: currentActiveLog,
-        analysis: activeAnalysisResult
-      })
-    });
+  const response = await fetch(`${API_BASE_URL}/generate-commands`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+    },
+    body: JSON.stringify({
+      logText: currentActiveLog,
+      analysis: activeAnalysisResult
+    })
+  });
 
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    
+
     const data = await response.json();
     generatedCommandsText = data.commandsMarkdown;
 
@@ -853,7 +900,7 @@ genReportBtn.addEventListener('click', async () => {
     // Zero-downtime Local Simulation Fallback
     console.log('[LOCAL RUN] Server offline. Simulating Report Compilation locally.');
     await new Promise(resolve => setTimeout(resolve, 800));
-    
+
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     generatedReportText = getMockReport(currentActiveLog, activeAnalysisResult).replace(/\[Current Date placeholder\]/g, dateStr);
 
@@ -866,18 +913,23 @@ genReportBtn.addEventListener('click', async () => {
 
   try {
     const response = await fetch(`${API_BASE_URL}/generate-report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+       method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+  },
       body: JSON.stringify({
         logText: currentActiveLog,
         analysis: activeAnalysisResult
       })
     });
 
+
+
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
 
     const data = await response.json();
-    
+
     // Replacements for formal current time indicator inside mock placeholders
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     generatedReportText = data.reportMarkdown.replace(/\[Current Date placeholder\]/g, dateStr);
@@ -949,7 +1001,10 @@ async function runQuickCheck(type) {
   try {
     const response = await fetch(`${API_BASE_URL}/run-safe-check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+  },
       body: JSON.stringify({ checkType: type })
     });
 

@@ -12,6 +12,25 @@
 </head>
 <body>
 
+<div id="login-screen" class="login-screen">
+  <div class="login-card">
+    <h1>AI Ops Assistant</h1>
+    <p>Admin access required</p>
+
+    <form id="login-form">
+      <label for="login-username">Username</label>
+      <input id="login-username" type="text" autocomplete="username" required>
+
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+
+      <button type="submit" class="btn-primary">Login</button>
+    </form>
+
+    <p id="login-error" class="login-error hidden">Invalid username or password.</p>
+  </div>
+</div>
+
   <!-- App Header -->
   <header class="app-header">
     <div class="header-logo">

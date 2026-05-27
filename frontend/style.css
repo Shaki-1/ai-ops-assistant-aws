@@ -1234,3 +1234,69 @@ body::before {
     opacity: 0;
   }
 }
+
+
+/* ==========================================
+   LOGIN SCREEN
+========================================== */
+
+.login-screen {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 10, 20, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+}
+
+.login-card {
+  width: 360px;
+  padding: 32px;
+  border-radius: 20px;
+  background: rgba(20, 20, 35, 0.95);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+}
+
+.login-card h1 {
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.login-card p {
+  text-align: center;
+  margin-bottom: 20px;
+  opacity: 0.8;
+}
+
+.login-card label {
+  display: block;
+  margin-bottom: 6px;
+  margin-top: 16px;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: white;
+}
+
+.login-card button {
+  width: 100%;
+  margin-top: 24px;
+}
+
+.login-error {
+  color: #ff6b6b;
+  margin-top: 16px;
+  text-align: center;
+}
+
+.hidden {
+  display: none;
+}
