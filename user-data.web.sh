@@ -88,6 +88,16 @@ CRONEOF
 
 chmod 644 /etc/cron.d/ai-ops-history-backup
 
+mkdir -p /home/ec2-user/.ssh
+chmod 700 /home/ec2-user/.ssh
+
+grep -qxF "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIQvO3e4CepfYYKNgHmXCFjUPLoDfrVD8Q3D3jWwkGd5 github-actions-aiops" /home/ec2-user/.ssh/authorized_keys || \
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIQvO3e4CepfYYKNgHmXCFjUPLoDfrVD8Q3D3jWwkGd5 github-actions-aiops" >> /home/ec2-user/.ssh/authorized_keys
+
+chown -R ec2-user:ec2-user /home/ec2-user/.ssh
+chmod 600 /home/ec2-user/.ssh/authorized_keys
+
+
 
 certbot --nginx \
   --non-interactive \
