@@ -1,3 +1,10 @@
+![Terraform](https://img.shields.io/badge/Terraform-IaC-623CE4?style=for-the-badge&logo=terraform)
+![AWS](https://img.shields.io/badge/AWS-EC2-FF9900?style=for-the-badge&logo=amazonaws)
+![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?style=for-the-badge&logo=node.js)
+![Nginx](https://img.shields.io/badge/Nginx-Reverse_Proxy-009639?style=for-the-badge&logo=nginx)
+![HTTPS](https://img.shields.io/badge/HTTPS-Let's_Encrypt-003A70?style=for-the-badge&logo=letsencrypt)
+![Status](https://img.shields.io/badge/Status-Production_Like-success?style=for-the-badge)
+
 # AI Ops Assistant — Automated AWS DevOps Deployment
 
 ## Overview
