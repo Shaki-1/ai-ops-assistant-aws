@@ -90,6 +90,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+flex-wrap: wrap;
 }
 
 .icon-logo {
@@ -1299,4 +1300,9 @@ body::before {
 
 .hidden {
   display: none;
+}
+
+#logout-btn {
+  margin-left: 12px;
+  padding: 8px 14px;
 }
