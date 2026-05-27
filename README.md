@@ -37,6 +37,20 @@ https://shaki-aiops.duckdns.org
 
 ---
 
+## Application Preview
+
+### Dashboard Overview
+
+![Dashboard Overview](docs/screenshots/dashboard-empty.png)
+
+---
+
+### AI Incident Analysis
+
+![AI Analysis](docs/screenshots/dashboard-analysis.png)
+
+---
+
 # Key Features
 
 ## AI-Powered Diagnostics
