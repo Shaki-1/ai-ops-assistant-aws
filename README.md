@@ -1,190 +1,361 @@
-# AI Ops Assistant (AWS Deployment)
+# AI Ops Assistant — Automated AWS DevOps Deployment
 
 ## Overview
 
-AI Ops Assistant is a cloud-based application designed to help system administrators analyze logs, diagnose issues, and generate troubleshooting recommendations using AI.
+AI Ops Assistant is a cloud-hosted AI-powered troubleshooting platform designed to help system administrators and DevOps engineers analyze logs, identify incidents, and generate troubleshooting recommendations automatically.
 
-The application is deployed on AWS EC2 and combines a frontend dashboard, a Node.js backend, and an external AI provider (Groq) to deliver real-time insights.
+The project combines:
 
----
+- AWS EC2 infrastructure
+- Terraform Infrastructure as Code (IaC)
+- Nginx reverse proxy
+- Node.js backend
+- PM2 process management
+- AI-powered log analysis using Groq
+- Automated HTTPS deployment with Certbot
+- Dynamic DNS using DuckDNS
 
-## Live Demo
-
-http://YOUR_EC2_PUBLIC_DNS
-
----
-
-## Architecture
-
-Browser → Nginx → Node.js (PM2) → Groq API
-
-- **Nginx** serves the frontend and proxies API requests  
-- **Node.js backend** processes requests and communicates with AI  
-- **Groq API** performs AI inference  
-- **PM2** ensures backend stability  
+The infrastructure is fully reproducible and can be destroyed and rebuilt automatically using Terraform.
 
 ---
 
-## Features
+# Live Deployment
 
-- Real-time server monitoring (`/api/status`)
-- AI-powered log analysis
+Example production URL:
+
+```text
+https://shaki-aiops.duckdns.org
+```
+
+---
+
+# Key Features
+
+## AI-Powered Diagnostics
+
+- AI-based log analysis
 - Root cause identification
-- Troubleshooting recommendations
-- Safe command suggestions (read-only)
-- Incident report generation
-- Interactive dashboard
+- Severity classification
+- Recommended remediation steps
+- Timeline-style incident visualization
+
+## Infrastructure Automation
+
+- One-command deployment using Terraform
+- Automated EC2 provisioning
+- Automated Nginx configuration
+- Automated PM2 setup
+- Automated HTTPS certificate generation
+- Automated DuckDNS updates
+
+## Frontend Dashboard
+
+- Interactive monitoring interface
+- Command history panel
+- Replay previous analyses
+- Timeline visualization
+- Responsive modern UI
 
 ---
 
-## Tech Stack
+# Architecture
 
-- AWS EC2 (t3.micro)
-- Terraform (infrastructure provisioning)
-- Node.js + Express
-- PM2 (process manager)
-- Nginx (reverse proxy)
-- HTML / CSS / JavaScript
-- Groq API (AI provider)
+```text
+Browser
+   ↓
+Nginx Reverse Proxy
+   ↓
+Node.js Backend (PM2)
+   ↓
+Groq AI API
+```
 
 ---
 
-## Setup Guide
+# Tech Stack
 
-### 1. Clone repository
+| Component | Technology |
+|---|---|
+| Cloud Provider | AWS EC2 |
+| Infrastructure | Terraform |
+| Backend | Node.js + Express |
+| Frontend | HTML / CSS / JavaScript |
+| Reverse Proxy | Nginx |
+| Process Manager | PM2 |
+| AI Provider | Groq API |
+| HTTPS | Certbot + Let's Encrypt |
+| Dynamic DNS | DuckDNS |
+
+---
+
+# Repository Structure
+
+```text
+ai-ops-assistant/
+│
+├── backend/
+│   ├── prompts/
+│   ├── server.js
+│   ├── package.json
+│   └── .env.example
+│
+├── frontend/
+│   ├── index.html
+│   ├── app.js
+│   └── style.css
+│
+├── scripts/
+│   └── recover_ec2.sh
+│
+├── main.tf
+├── variables.tf
+├── outputs.tf
+├── terraform.tfvars
+├── user-data.web.sh
+├── README.md
+└── .gitignore
+```
+
+---
+
+# Automated Deployment Workflow
+
+## 1. Clone Repository
 
 ```bash
-git clone https://github.com/YOUR_REPO.git
+git clone https://github.com/YOUR_USERNAME/ai-ops-assistant-aws.git
 cd ai-ops-assistant-aws
 ```
-2. Configure environment
-```
-cp backend/.env.example backend/.env
-```
-Edit .env:
-```
-AI_PROVIDER=groq
-GROQ_API_KEY=your_groq_key_here
-GROQ_MODEL=llama-3.1-8b-instant
-PORT=3000
-```
-3. Install backend
-```
-cd backend
-npm install
-```
-4. Start backend
-```
-pm2 start server.js --name ai-ops-backend
-pm2 save
-```
-5. Configure Nginx
-```
-Add:
-
-location /api/ {
-    proxy_pass http://localhost:3000/api/;
-}
-```
-Restart:
-```
-sudo systemctl restart nginx
-```
-6. Deploy frontend
-```
-sudo cp -r frontend/* /usr/share/nginx/html/
-```
-Usage
-
-Open:
-
-http://YOUR_EC2_PUBLIC_DNS
-
-Example log input:
-
-nginx: connect() failed (111: Connection refused) while connecting to upstream
-
-Click Analyze System Logs to get AI diagnostics.
-
-## What Was Tried
-
-During development, multiple approaches were tested:
-
-Local AI with Ollama
-Installed Ollama on EC2
-Tested small models (qwen2.5:0.5b)
-Integrated API calls in backend
-
-Result:
-High memory usage
-Frequent crashes
-Server instability
-Disk pressure issues
-OpenAI API
-Attempted integration with OpenAI
-Encountered quota limitations
-Result:
-Not usable due to API limits
-
-# Several critical issues were identified and resolved:
-Infrastructure Issues
-EC2 instability due to low resources
-Fixed by removing local AI models
-Backend Issues
-Syntax errors breaking server
-Fixed using node --check and rollback
-Nginx Issues
-502 Bad Gateway → backend not running
-500 Internal Error → permission problems
-API routing issues (/api path mismatch)
-Frontend Issues
-Demo mode always active
-Fixed API endpoint from localhost → /api
-Git & Security
-.env accidentally included
-Fixed with .gitignore and key rotation
 
 ---
 
-# Final Solution
-The system was redesigned to:
-Remove local AI (Ollama)
-Use Groq API instead
-Keep backend lightweight
-Improve stability and scalability
+## 2. Configure Terraform Variables
+
+Create or edit:
+
+```text
+terraform.tfvars
+```
+
+Example:
+
+```hcl
+ec2_name       = "ai-ops-assistant"
+ec2_type       = "t3.micro"
+
+groq_api_key   = "YOUR_GROQ_API_KEY"
+duckdns_domain = "YOUR_DOMAIN"
+duckdns_token  = "YOUR_DUCKDNS_TOKEN"
+```
 
 ---
 
-# What Was Learned
-This project provided hands-on experience with:
-Cloud deployment (AWS EC2)
-Infrastructure as Code (Terraform)
-Reverse proxy configuration (Nginx)
-Backend API design (Node.js)
-AI integration (Groq / OpenAI-compatible APIs)
-Debugging production issues
-System stability and resource management
-Security best practices (API keys, .env)
-Limitations
-Requires external AI API (Groq)
-No authentication system
-Limited scalability (t3.micro)
-No persistent storage for logs
+## 3. Deploy Infrastructure
+
+```bash
+terraform init
+terraform apply
+```
+
+Terraform automatically:
+
+- Creates the EC2 instance
+- Installs dependencies
+- Clones the repository
+- Configures Nginx
+- Starts PM2
+- Configures DuckDNS
+- Generates HTTPS certificates
 
 ---
 
-## Future Improvements
-Add authentication (login system)
-Store logs and reports in a database
-Improve UI/UX
-Add monitoring and alerting
-Deploy using Docker or Kubernetes
-Security
-.env files are not committed
-API keys are protected
-Backend is not directly exposed (via Nginx)
+# Accessing the Application
+
+After deployment:
+
+```text
+https://YOUR_DOMAIN.duckdns.org
+```
 
 ---
 
-## Author
-Laura
+# HTTPS Automation
+
+HTTPS is automatically configured using:
+
+- Certbot
+- Let's Encrypt
+- Nginx integration
+
+Certificates are generated during deployment.
+
+---
+
+# DuckDNS Integration
+
+DuckDNS is used to provide a free domain name dynamically linked to the EC2 public IP address.
+
+The deployment automatically:
+
+- Updates DNS records
+- Configures HTTPS for the domain
+- Maintains connectivity after redeployment
+
+---
+
+# PM2 Process Management
+
+The backend is managed using PM2.
+
+Useful commands:
+
+```bash
+pm2 status
+pm2 logs ai-ops-backend
+pm2 restart ai-ops-backend
+```
+
+PM2 startup is configured automatically so the backend restarts after server reboot.
+
+---
+
+# Security Practices
+
+## Protected Secrets
+
+Sensitive values are excluded from Git:
+
+- `.env`
+- `terraform.tfvars`
+- runtime history files
+
+## HTTPS Encryption
+
+All traffic is encrypted using Let's Encrypt certificates.
+
+## Reverse Proxy Protection
+
+The backend is not exposed directly to the internet. All traffic passes through Nginx.
+
+---
+
+# Troubleshooting Guide
+
+## Nginx Errors
+
+Check status:
+
+```bash
+sudo systemctl status nginx
+```
+
+Check logs:
+
+```bash
+sudo tail -f /var/log/nginx/error.log
+```
+
+---
+
+## Backend Errors
+
+Check PM2:
+
+```bash
+pm2 logs ai-ops-backend
+```
+
+---
+
+## Terraform Validation
+
+```bash
+terraform fmt
+terraform validate
+```
+
+---
+
+# Development Challenges Solved
+
+During development several production-like issues were identified and resolved:
+
+- EC2 memory instability
+- API key authentication failures
+- Nginx permission errors
+- HTTPS certificate validation problems
+- Git ownership conflicts
+- PM2 persistence issues
+- DNS propagation problems
+- Reverse proxy configuration issues
+
+These debugging sessions significantly improved deployment reliability and infrastructure automation.
+
+---
+
+# Future Improvements
+
+Potential future enhancements:
+
+- Docker containerization
+- Kubernetes deployment
+- CI/CD with GitHub Actions
+- Database persistence
+- User authentication system
+- Monitoring and alerting
+- AWS SSM Parameter Store integration
+- Multi-instance scalability
+
+---
+
+# Recovery Workflow
+
+If the EC2 instance is destroyed:
+
+```bash
+terraform apply
+```
+
+The infrastructure and application stack are rebuilt automatically.
+
+---
+
+# Useful Commands
+
+## Destroy Infrastructure
+
+```bash
+terraform destroy
+```
+
+---
+
+## View Terraform Outputs
+
+```bash
+terraform output
+```
+
+---
+
+## SSH into EC2
+
+```bash
+ssh -i ~/.ssh/YOUR_KEY.pem ec2-user@YOUR_PUBLIC_IP
+```
+
+---
+
+# License
+
+This project is intended for educational, DevOps learning, and infrastructure automation purposes.
+
+---
+
+# Project Status
+
+Current Status:
+
+```text
+Production-like automated deployment working successfully
+```
