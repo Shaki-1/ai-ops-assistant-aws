@@ -67,6 +67,17 @@ chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
 
 /home/ec2-user/duckdns.sh
 
+mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
+chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws/backups
+
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh
+
+cat > /etc/cron.d/ai-ops-history-backup <<CRONEOF
+*/30 * * * * ec2-user /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh >> /home/ec2-user/ai-ops-assistant-aws/backups/history/backup.log 2>&1
+CRONEOF
+
+chmod 644 /etc/cron.d/ai-ops-history-backup
+
 
 certbot --nginx \
   --non-interactive \
