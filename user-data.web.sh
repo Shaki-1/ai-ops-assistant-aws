@@ -25,11 +25,17 @@ ADMIN_PASSWORD_HASH=${admin_password_hash}
 AUTH_TOKEN_SECRET=${auth_token_secret}
 ENVEOF
 
-pm2 start server.js --name ai-ops-backend
-pm2 save
+chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws
+
+sudo -u ec2-user bash -lc '
+  cd /home/ec2-user/ai-ops-assistant-aws/backend
+  pm2 start server.js --name ai-ops-backend --update-env
+  pm2 save
+'
 
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
-env PATH=$PATH:/usr/bin pm2 save
+systemctl enable pm2-ec2-user
+
 
 cat > /etc/nginx/conf.d/ai-ops-assistant.conf <<NGINXEOF
 server {
@@ -68,9 +74,7 @@ DUCKEOF
 
 chmod +x /home/ec2-user/duckdns.sh
 chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
-touch /home/ec2-user/duckdns.log
-chown ec2-user:ec2-user /home/ec2-user/duckdns.log
-chmod 664 /home/ec2-user/duckdns.log
+
 /home/ec2-user/duckdns.sh
 
 mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
