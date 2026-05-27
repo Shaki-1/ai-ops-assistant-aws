@@ -6,7 +6,11 @@ resource "aws_instance" "ai_ops_assistant" {
 
   vpc_security_group_ids = [var.main_sg_id]
 
-  user_data                   = file("user-data.web.sh")
+  user_data = templatefile("user-data.web.sh", {
+    groq_api_key   = var.groq_api_key
+    duckdns_domain = var.duckdns_domain
+    duckdns_token  = var.duckdns_token
+  })
   user_data_replace_on_change = true
 
   tags = {

@@ -16,7 +16,7 @@ npm install
 
 cat > .env <<ENVEOF
 AI_PROVIDER=groq
-GROQ_API_KEY=REPLACE_ME_AFTER_DEPLOYMENT
+GROQ_API_KEY=${groq_api_key}
 GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
 ENVEOF
@@ -48,3 +48,13 @@ NGINXEOF
 
 rm -f /etc/nginx/conf.d/default.conf
 systemctl restart nginx
+
+cat > /home/ec2-user/duckdns.sh <<DUCKEOF
+#!/bin/bash
+curl "https://www.duckdns.org/update?domains=${duckdns_domain}&token=${duckdns_token}&ip=" -o /home/ec2-user/duckdns.log
+DUCKEOF
+
+chmod +x /home/ec2-user/duckdns.sh
+chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
+
+/home/ec2-user/duckdns.sh

@@ -25,3 +25,18 @@ variable "main_sg_id" {
 variable "aws_owner" {
   type = string
 }
+
+variable "groq_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "duckdns_domain" {
+  type    = string
+  default = "shaki-aiops"
+}
+
+variable "duckdns_token" {
+  type      = string
+  sensitive = true
+}
