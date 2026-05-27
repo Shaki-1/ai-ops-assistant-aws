@@ -14,6 +14,11 @@ const loginScreen = document.getElementById('login-screen');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
+const dashboardViewBtn = document.getElementById('dashboard-view-btn');
+const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
+const analyzerView = document.getElementById('analyzer-view');
+const metricsDashboardView = document.getElementById('metrics-dashboard-view');
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -135,6 +140,8 @@ const copyRepText = document.getElementById('copy-rep-text');
 const downloadReportBtn = document.getElementById('download-report-btn');
 
 const historyList = document.getElementById('history-list');
+const historyContent = document.getElementById('history-content');
+const toggleHistoryBtn = document.getElementById('toggle-history-btn');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
@@ -502,12 +509,25 @@ function parseMarkdownToHTML(markdown) {
 // LIVE RESOURCE METRICS CHARTS (GET /api/metrics)
 // ==========================================
 
+function getChartThemeColors() {
+  const styles = getComputedStyle(document.documentElement);
+
+  return {
+    textMuted: styles.getPropertyValue('--text-muted').trim() || '#64748b',
+    grid: document.documentElement.dataset.theme === 'light'
+      ? 'rgba(15, 23, 42, 0.08)'
+      : 'rgba(255, 255, 255, 0.06)'
+  };
+}
+
 function createMetricChart(canvasId, label, color) {
   const canvas = document.getElementById(canvasId);
 
   if (!canvas || !window.Chart) {
     return null;
   }
+
+  const themeColors = getChartThemeColors();
 
   return new Chart(canvas, {
     type: 'line',
@@ -546,10 +566,10 @@ function createMetricChart(canvasId, label, color) {
       scales: {
         x: {
           grid: {
-            color: 'rgba(255, 255, 255, 0.04)'
+            color: themeColors.grid
           },
           ticks: {
-            color: '#64748b',
+            color: themeColors.textMuted,
             maxTicksLimit: 4,
             font: {
               size: 10
@@ -560,10 +580,10 @@ function createMetricChart(canvasId, label, color) {
           min: 0,
           max: 100,
           grid: {
-            color: 'rgba(255, 255, 255, 0.06)'
+            color: themeColors.grid
           },
           ticks: {
-            color: '#64748b',
+            color: themeColors.textMuted,
             stepSize: 50,
             callback: (value) => `${value}%`,
             font: {
@@ -574,6 +594,10 @@ function createMetricChart(canvasId, label, color) {
       }
     }
   });
+}
+
+function isMetricsDashboardVisible() {
+  return metricsDashboardView && !metricsDashboardView.classList.contains('hidden');
 }
 
 function initializeMetricsCharts() {
@@ -640,14 +664,18 @@ function updateMetricValue(element, value) {
 }
 
 async function pollMetrics() {
-  if (!initializeMetricsCharts()) {
-    return;
-  }
-
   const token = localStorage.getItem('authToken');
 
   if (!token) {
     stopAuthenticatedSession();
+    return;
+  }
+
+  if (!isMetricsDashboardVisible()) {
+    return;
+  }
+
+  if (!initializeMetricsCharts()) {
     return;
   }
 
@@ -785,6 +813,62 @@ function updateHeaderClock() {
   headerClock.textContent = clock.toLocaleTimeString('en-US', { hour12: false });
 }
 
+function showMetricsDashboard() {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.remove('hidden');
+
+  requestAnimationFrame(() => {
+    if (metricsCharts) {
+      Object.values(metricsCharts).forEach((chart) => chart?.resize());
+    }
+
+    pollMetrics();
+  });
+}
+
+function showAnalyzerView() {
+  metricsDashboardView?.classList.add('hidden');
+  analyzerView?.classList.remove('hidden');
+}
+
+function applyTheme(theme) {
+  const normalizedTheme = theme === 'light' ? 'light' : 'dark';
+
+  document.documentElement.dataset.theme = normalizedTheme;
+  localStorage.setItem('themePreference', normalizedTheme);
+
+  if (themeToggleBtn) {
+    const isLight = normalizedTheme === 'light';
+    themeToggleBtn.textContent = isLight ? 'Dark Mode' : 'Light Mode';
+    themeToggleBtn.setAttribute('aria-pressed', String(isLight));
+  }
+
+  if (metricsCharts) {
+    destroyMetricsCharts();
+    if (isMetricsDashboardVisible()) {
+      requestAnimationFrame(pollMetrics);
+    }
+  }
+}
+
+function toggleTheme() {
+  const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  applyTheme(nextTheme);
+}
+
+function setHistoryVisible(isVisible) {
+  historyContent?.classList.toggle('hidden', !isVisible);
+
+  if (toggleHistoryBtn) {
+    toggleHistoryBtn.textContent = isVisible ? 'Hide History' : 'Show History';
+    toggleHistoryBtn.setAttribute('aria-expanded', String(isVisible));
+  }
+}
+
 function startAuthenticatedSession() {
   if (!localStorage.getItem('authToken')) {
     return;
@@ -828,10 +912,25 @@ function stopAuthenticatedSession() {
 }
 
 startAuthenticatedSession();
+applyTheme(localStorage.getItem('themePreference') || 'dark');
 
 // ==========================================
 // INTERACTIVE EVENT LISTENERS & LOGIC
 // ==========================================
+
+dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
+backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
+themeToggleBtn?.addEventListener('click', toggleTheme);
+toggleHistoryBtn?.addEventListener('click', () => {
+  const willShow = historyContent?.classList.contains('hidden');
+  setHistoryVisible(Boolean(willShow));
+
+  if (willShow) {
+    renderHistory();
+  }
+});
+
+setHistoryVisible(false);
 
 // Demo Selector loader
 demoSelect.addEventListener('change', (e) => {

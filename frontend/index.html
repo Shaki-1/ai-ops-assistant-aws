@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Ops Assistant - Enterprise System Diagnosis</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem('themePreference') || 'dark';
+  </script>
   <!-- Modern clean typography from Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -47,6 +50,8 @@
     </div>
     
     <div class="header-status">
+      <button id="dashboard-view-btn" class="btn-secondary header-action-btn">Dashboard</button>
+      <button id="theme-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Light Mode</button>
       <div class="status-indicator">
         <span class="pulse-dot"></span>
         <span class="status-text">Server API Connected</span>
@@ -58,7 +63,7 @@
   </header>
 
   <!-- Main Dashboard Grid -->
-  <main class="dashboard-grid">
+  <main class="dashboard-grid" id="analyzer-view">
     
     <!-- LEFT PANEL: Diagnostics Input & Host Health -->
     <div class="panel-column left-column">
@@ -105,40 +110,6 @@
           </div>
         </div>
 
-        <div class="metrics-charts" aria-label="Live resource usage charts">
-          <div class="chart-card">
-            <div class="chart-card-header">
-              <span>CPU Usage %</span>
-              <span class="chart-value" id="cpu-chart-value">--%</span>
-            </div>
-            <div class="chart-frame">
-              <canvas id="cpu-chart"></canvas>
-            </div>
-          </div>
-
-          <div class="chart-card">
-            <div class="chart-card-header">
-              <span>RAM Usage %</span>
-              <span class="chart-value" id="ram-chart-value">--%</span>
-            </div>
-            <div class="chart-frame">
-              <canvas id="ram-chart"></canvas>
-            </div>
-          </div>
-
-          <div class="chart-card">
-            <div class="chart-card-header">
-              <span>Disk Usage %</span>
-              <span class="chart-value" id="disk-chart-value">--%</span>
-            </div>
-            <div class="chart-frame">
-              <canvas id="disk-chart"></canvas>
-            </div>
-          </div>
-
-          <p class="metrics-error hidden" id="metrics-error">Live metrics are temporarily unavailable.</p>
-        </div>
-
         <div class="health-footer">
           <span>Last Polled: <span id="last-polled-time">Never</span></span>
         </div>
@@ -158,6 +129,11 @@
         </div>
 
         <div class="analyzer-body">
+          <div class="analyzer-intro">
+            <h3>Paste logs or command output</h3>
+            <p>Add syslog, journalctl, web server errors, auth logs, or terminal output for AI-assisted troubleshooting.</p>
+          </div>
+
           <div class="demo-logs-selector">
             <label for="demo-select">Load Sample System Log:</label>
             <div class="select-wrapper">
@@ -175,7 +151,7 @@
             <label for="log-input" class="sr-only">Paste system or application logs here</label>
             <textarea 
               id="log-input" 
-              placeholder="Paste raw log lines from syslog, journalctl, Nginx error.log, auth.log, or application stack traces here..."
+              placeholder="Paste logs or command output here. Examples: journalctl excerpts, Nginx/Apache errors, SSH auth failures, disk or memory command output, stack traces, or service status messages."
               spellcheck="false"
             ></textarea>
             <button id="clear-input-btn" class="btn-clear" title="Clear log content">
@@ -326,10 +302,11 @@
 <section class="dashboard-panel panel-history" id="history-panel">
   <div class="panel-header">
     <h2>Command History</h2>
+    <button class="btn-secondary panel-header-action" id="toggle-history-btn">Show History</button>
     <button class="btn-secondary panel-header-action" onclick="window.renderHistory()">Refresh History</button>
   </div>
 
-  <div class="panel-content">
+  <div class="panel-content hidden" id="history-content">
     <ul id="history-list" class="styled-list">
       <li>No history yet.</li>
     </ul>
@@ -418,6 +395,53 @@
     </div>
 
   </main>
+
+  <section class="dashboard-view hidden" id="metrics-dashboard-view" aria-labelledby="metrics-dashboard-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Live Monitoring</p>
+          <h2 id="metrics-dashboard-title">Resource Dashboard</h2>
+          <p>Track CPU, RAM, and disk usage in real time while keeping the analyzer workspace focused.</p>
+        </div>
+        <button id="back-to-analyzer-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <div class="metrics-charts metrics-dashboard-grid" aria-label="Live resource usage charts">
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span>CPU Usage %</span>
+            <span class="chart-value" id="cpu-chart-value">--%</span>
+          </div>
+          <div class="chart-frame">
+            <canvas id="cpu-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span>RAM Usage %</span>
+            <span class="chart-value" id="ram-chart-value">--%</span>
+          </div>
+          <div class="chart-frame">
+            <canvas id="ram-chart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-header">
+            <span>Disk Usage %</span>
+            <span class="chart-value" id="disk-chart-value">--%</span>
+          </div>
+          <div class="chart-frame">
+            <canvas id="disk-chart"></canvas>
+          </div>
+        </div>
+
+        <p class="metrics-error hidden" id="metrics-error">Live metrics are temporarily unavailable.</p>
+      </div>
+    </div>
+  </section>
 
   <footer class="app-footer">
     <div class="footer-left">

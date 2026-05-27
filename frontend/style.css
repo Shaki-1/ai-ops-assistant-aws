@@ -43,6 +43,31 @@
   --transition-smooth: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+:root[data-theme="light"] {
+  --bg-app: #eef3f8;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8fafc;
+  --border-color: rgba(15, 23, 42, 0.12);
+  --border-color-focus: #2563eb;
+
+  --text-primary: #172033;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-bg: rgba(37, 99, 235, 0.1);
+
+  --color-success: #059669;
+  --color-success-bg: rgba(5, 150, 105, 0.1);
+
+  --color-warning: #b45309;
+  --color-warning-bg: rgba(180, 83, 9, 0.1);
+
+  --color-critical: #dc2626;
+  --color-critical-bg: rgba(220, 38, 38, 0.1);
+}
+
 /* --- Base & Reset --- */
 * {
   box-sizing: border-box;
@@ -60,6 +85,10 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:root[data-theme="light"] body {
+  background: #eef3f8;
 }
 
 .sr-only {
@@ -133,6 +162,10 @@ body {
   flex-shrink: 0;
 }
 
+.header-action-btn {
+  flex-shrink: 0;
+}
+
 .status-indicator {
   display: flex;
   align-items: center;
@@ -189,6 +222,16 @@ body {
   align-items: center;
 }
 
+:root[data-theme="light"] .system-time,
+:root[data-theme="light"] .metric-card,
+:root[data-theme="light"] .chart-card,
+:root[data-theme="light"] .result-section-card,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] select,
+:root[data-theme="light"] .login-card input {
+  background-color: rgba(15, 23, 42, 0.035);
+}
+
 /* --- Dashboard Grid System --- */
 .dashboard-grid {
   flex: 1;
@@ -199,6 +242,48 @@ body {
   max-width: 1680px;
   width: 100%;
   margin: 0 auto;
+}
+
+.dashboard-view {
+  flex: 1;
+  width: 100%;
+  padding: 2.25rem;
+}
+
+.dashboard-view-inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.dashboard-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.dashboard-view-header h2 {
+  color: var(--text-primary);
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-bottom: 0.35rem;
+}
+
+.dashboard-view-header p {
+  color: var(--text-secondary);
+  max-width: 680px;
+  font-size: 0.9rem;
+}
+
+.view-eyebrow {
+  color: var(--color-primary) !important;
+  font-size: 0.72rem !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
 }
 
 .panel-column {
@@ -228,9 +313,18 @@ body {
   transition: var(--transition-smooth);
 }
 
+:root[data-theme="light"] .dashboard-panel {
+  box-shadow: 0 8px 26px rgba(15, 23, 42, 0.08);
+}
+
 .dashboard-panel:hover {
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+}
+
+:root[data-theme="light"] .dashboard-panel:hover {
+  border-color: rgba(15, 23, 42, 0.18);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.1);
 }
 
 .panel-header {
@@ -386,12 +480,23 @@ body {
   gap: 1rem;
 }
 
+.metrics-dashboard-grid {
+  padding: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
 .chart-card {
   background: rgba(0, 0, 0, 0.12);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-sm);
   padding: 1rem;
   min-width: 0;
+}
+
+.metrics-dashboard-grid .chart-card {
+  border-radius: var(--border-radius-lg);
+  padding: 1.25rem;
 }
 
 .chart-card-header {
@@ -416,10 +521,18 @@ body {
   position: relative;
 }
 
+.metrics-dashboard-grid .chart-frame {
+  height: 280px;
+}
+
 .metrics-error {
   color: var(--color-warning);
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.metrics-dashboard-grid .metrics-error {
+  grid-column: 1 / -1;
 }
 
 .health-footer {
@@ -441,6 +554,26 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+}
+
+.analyzer-intro {
+  padding: 1rem;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: var(--border-radius-md);
+  background: var(--color-primary-bg);
+}
+
+.analyzer-intro h3 {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.analyzer-intro p {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .demo-logs-selector {
@@ -499,6 +632,10 @@ select option {
 .textarea-container {
   position: relative;
   width: 100%;
+  padding: 0.35rem;
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  border-radius: var(--border-radius-md);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02));
 }
 
 textarea {
@@ -515,6 +652,10 @@ textarea {
   outline: none;
   line-height: 1.4;
   transition: var(--transition-smooth);
+}
+
+.textarea-container textarea {
+  display: block;
 }
 
 textarea:focus {
@@ -1014,6 +1155,20 @@ button {
   max-height: 450px;
 }
 
+:root[data-theme="light"] .terminal-box,
+:root[data-theme="light"] .report-paper {
+  background-color: #f8fafc;
+  color: #1f2937;
+}
+
+:root[data-theme="light"] .terminal-box code {
+  color: #1e293b;
+}
+
+:root[data-theme="light"] .terminal-box pre code {
+  color: #0369a1;
+}
+
 .terminal-box code {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -1211,6 +1366,10 @@ button {
   color: var(--text-muted);
 }
 
+:root[data-theme="light"] .app-footer {
+  background-color: var(--bg-card);
+}
+
 .footer-left strong {
   color: var(--text-secondary);
 }
@@ -1233,6 +1392,18 @@ button {
     grid-template-columns: 1fr;
     padding: 1.25rem;
     gap: 1.5rem;
+  }
+
+  .dashboard-view {
+    padding: 1.25rem;
+  }
+
+  .dashboard-view-header {
+    flex-direction: column;
+  }
+
+  .metrics-dashboard-grid {
+    grid-template-columns: 1fr;
   }
   
   .app-header {
@@ -1263,7 +1434,8 @@ button {
   }
 
   .analysis-action-bar .btn-secondary,
-  .quick-actions .btn-secondary {
+  .quick-actions .btn-secondary,
+  .header-action-btn {
     flex: 1 1 180px;
   }
 }
@@ -1455,6 +1627,18 @@ body::before {
     padding: 1rem;
   }
 
+  .dashboard-view {
+    padding: 1rem;
+  }
+
+  .metrics-dashboard-grid {
+    padding: 0;
+  }
+
+  .metrics-dashboard-grid .chart-frame {
+    height: 220px;
+  }
+
   .quick-actions {
     grid-template-columns: 1fr;
   }
@@ -1466,6 +1650,7 @@ body::before {
 
   .status-indicator,
   .system-time,
+  .header-action-btn,
   #logout-btn {
     width: 100%;
   }
