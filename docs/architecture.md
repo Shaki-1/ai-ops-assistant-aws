@@ -17,7 +17,7 @@ flowchart TD
     EC2 --> API
     EC2 --> DuckScript["DuckDNS Update Script"]
     EC2 --> Certbot["Certbot HTTPS Setup"]
-```md
+```
 
 ## Request Flow
 1. User opens the DuckDNS domain.
