@@ -15,6 +15,7 @@ const authToken = localStorage.getItem('authToken');
 const loginScreen = document.getElementById('login-screen');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
+const logoutBtn = document.getElementById('logout-btn');
 
 if (authToken) {
   loginScreen.classList.add('hidden');
@@ -47,6 +48,11 @@ loginForm.addEventListener('submit', async (event) => {
   } catch (error) {
     loginError.classList.remove('hidden');
   }
+});
+
+logoutBtn.addEventListener('click', () => {
+  localStorage.removeItem('authToken');
+  window.location.reload();
 });
 
 // Host Configuration
