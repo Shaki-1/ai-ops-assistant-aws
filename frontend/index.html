@@ -37,7 +37,7 @@
   <!-- App Header -->
   <header class="app-header">
     <div class="header-left">
-      <div class="header-logo">
+      <button id="app-home-btn" class="header-logo" type="button" aria-label="Return to analyzer">
         <svg class="icon-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           <path d="M12 8v4"/>
@@ -45,13 +45,11 @@
         </svg>
         <h1>AI Ops Assistant</h1>
         <span class="version-badge">MVP v1.0</span>
-      </div>
-      <button id="logout-btn" class="btn-secondary">Logout</button>
+      </button>
+      <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
     </div>
     
     <div class="header-status">
-      <button id="dashboard-view-btn" class="btn-secondary header-action-btn">Dashboard</button>
-      <button id="theme-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Light Mode</button>
       <div class="status-indicator">
         <span class="pulse-dot"></span>
         <span class="status-text">Server API Connected</span>
@@ -59,6 +57,11 @@
       <div class="system-time">
         <span id="header-clock">--:--:--</span>
       </div>
+    </div>
+
+    <div class="header-actions">
+      <button id="theme-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Light Mode</button>
+      <button id="logout-btn" class="btn-secondary header-action-btn">Logout</button>
     </div>
   </header>
 
@@ -407,10 +410,33 @@
         <button id="back-to-analyzer-btn" class="btn-secondary">Back to Analyzer</button>
       </div>
 
+      <div class="system-summary-card" aria-label="System summary">
+        <div class="system-summary-item">
+          <span>Hostname</span>
+          <strong id="summary-hostname">--</strong>
+        </div>
+        <div class="system-summary-item">
+          <span>Platform</span>
+          <strong id="summary-platform">--</strong>
+        </div>
+        <div class="system-summary-item">
+          <span>Node.js</span>
+          <strong id="summary-node-version">--</strong>
+        </div>
+        <div class="system-summary-item">
+          <span>Backend</span>
+          <strong id="summary-backend-status">--</strong>
+        </div>
+      </div>
+
       <div class="ops-metrics-grid" aria-label="Backend operational metrics">
         <div class="ops-metric-card">
           <span class="ops-metric-label">API Requests</span>
           <strong id="metric-api-requests">--</strong>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">API Success Rate</span>
+          <strong id="metric-api-success-rate">--%</strong>
         </div>
         <div class="ops-metric-card">
           <span class="ops-metric-label">Failed Requests</span>
@@ -432,19 +458,14 @@
           <span class="ops-metric-label">Backend Uptime</span>
           <strong id="metric-backend-uptime">--</strong>
         </div>
-        <div class="ops-metric-card">
-          <span class="ops-metric-label">Node.js</span>
-          <strong id="metric-node-version">--</strong>
-        </div>
-        <div class="ops-metric-card ops-metric-card-wide">
-          <span class="ops-metric-label">Host / Platform</span>
-          <strong id="metric-host-platform">--</strong>
-          <span class="ops-metric-subtext" id="metric-backend-status">Backend status: --</span>
-        </div>
         <div class="ops-metric-card ops-metric-card-wide">
           <span class="ops-metric-label">Process Memory</span>
           <strong id="metric-process-memory">--</strong>
           <span class="ops-metric-subtext" id="metric-process-heap">Heap: --</span>
+        </div>
+        <div class="ops-metric-card">
+          <span class="ops-metric-label">Last Refresh</span>
+          <strong id="metric-last-refresh">--</strong>
         </div>
       </div>
 
@@ -452,7 +473,10 @@
         <div class="chart-card">
           <div class="chart-card-header">
             <span>CPU Usage %</span>
-            <span class="chart-value" id="cpu-chart-value">--%</span>
+            <div class="chart-header-meta">
+              <span class="resource-status status-healthy" id="cpu-status">Healthy</span>
+              <span class="chart-value" id="cpu-chart-value">--%</span>
+            </div>
           </div>
           <div class="chart-frame">
             <canvas id="cpu-chart"></canvas>
@@ -462,7 +486,10 @@
         <div class="chart-card">
           <div class="chart-card-header">
             <span>RAM Usage %</span>
-            <span class="chart-value" id="ram-chart-value">--%</span>
+            <div class="chart-header-meta">
+              <span class="resource-status status-healthy" id="ram-status">Healthy</span>
+              <span class="chart-value" id="ram-chart-value">--%</span>
+            </div>
           </div>
           <div class="chart-frame">
             <canvas id="ram-chart"></canvas>
@@ -472,7 +499,10 @@
         <div class="chart-card">
           <div class="chart-card-header">
             <span>Disk Usage %</span>
-            <span class="chart-value" id="disk-chart-value">--%</span>
+            <div class="chart-header-meta">
+              <span class="resource-status status-healthy" id="disk-status">Healthy</span>
+              <span class="chart-value" id="disk-chart-value">--%</span>
+            </div>
           </div>
           <div class="chart-frame">
             <canvas id="disk-chart"></canvas>

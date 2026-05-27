@@ -14,6 +14,7 @@ const loginScreen = document.getElementById('login-screen');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
+const appHomeBtn = document.getElementById('app-home-btn');
 const dashboardViewBtn = document.getElementById('dashboard-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
@@ -100,17 +101,23 @@ const metricsError = document.getElementById('metrics-error');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
+const cpuStatus = document.getElementById('cpu-status');
+const ramStatus = document.getElementById('ram-status');
+const diskStatus = document.getElementById('disk-status');
 const metricApiRequests = document.getElementById('metric-api-requests');
+const metricApiSuccessRate = document.getElementById('metric-api-success-rate');
 const metricFailedRequests = document.getElementById('metric-failed-requests');
 const metricAverageLatency = document.getElementById('metric-average-latency');
 const metricAiSuccess = document.getElementById('metric-ai-success');
 const metricAiFailed = document.getElementById('metric-ai-failed');
 const metricBackendUptime = document.getElementById('metric-backend-uptime');
-const metricNodeVersion = document.getElementById('metric-node-version');
-const metricHostPlatform = document.getElementById('metric-host-platform');
-const metricBackendStatus = document.getElementById('metric-backend-status');
+const metricLastRefresh = document.getElementById('metric-last-refresh');
 const metricProcessMemory = document.getElementById('metric-process-memory');
 const metricProcessHeap = document.getElementById('metric-process-heap');
+const summaryHostname = document.getElementById('summary-hostname');
+const summaryPlatform = document.getElementById('summary-platform');
+const summaryNodeVersion = document.getElementById('summary-node-version');
+const summaryBackendStatus = document.getElementById('summary-backend-status');
 
 const demoSelect = document.getElementById('demo-select');
 const logInput = document.getElementById('log-input');
@@ -720,30 +727,69 @@ function setMetricText(element, value) {
   }
 }
 
+function getResourceStatus(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return { label: '--', className: 'status-unknown' };
+  }
+
+  if (numericValue >= 90) {
+    return { label: 'Critical', className: 'status-critical' };
+  }
+
+  if (numericValue >= 75) {
+    return { label: 'Warning', className: 'status-warning' };
+  }
+
+  return { label: 'Healthy', className: 'status-healthy' };
+}
+
+function updateStatusBadge(element, value) {
+  if (!element) {
+    return;
+  }
+
+  const status = getResourceStatus(value);
+  element.textContent = status.label;
+  element.className = `resource-status ${status.className}`;
+}
+
 function updateOperationalMetrics(metrics) {
   const requests = metrics.requests || {};
   const aiAnalyses = metrics.aiAnalyses || {};
   const runtime = metrics.runtime || {};
   const backendStatus = runtime.backendStatus || {};
   const processMemory = metrics.processMemory || {};
+  const totalRequests = Number(requests.total || 0);
+  const failedRequests = Number(requests.failed || 0);
+  const successRate = totalRequests > 0
+    ? ((totalRequests - failedRequests) / totalRequests) * 100
+    : 100;
+  const backendStatusText = backendStatus.pm2Managed
+    ? `Running via PM2 #${backendStatus.pm2Id}`
+    : (backendStatus.status || 'running');
+  const refreshTime = metrics.timestamp
+    ? new Date(metrics.timestamp).toLocaleTimeString()
+    : '--';
 
   setMetricText(metricApiRequests, formatCount(requests.total));
+  setMetricText(metricApiSuccessRate, `${successRate.toFixed(1)}%`);
   setMetricText(metricFailedRequests, formatCount(requests.failed));
   setMetricText(metricAverageLatency, `${Number(requests.averageLatencyMs || 0).toFixed(1)} ms`);
   setMetricText(metricAiSuccess, formatCount(aiAnalyses.successful));
   setMetricText(metricAiFailed, formatCount(aiAnalyses.failed));
   setMetricText(metricBackendUptime, formatUptime(runtime.uptimeSeconds));
-  setMetricText(metricNodeVersion, runtime.nodeVersion || '--');
-  setMetricText(metricHostPlatform, `${runtime.hostname || '--'} / ${runtime.platform || '--'}`);
-  setMetricText(
-    metricBackendStatus,
-    `Backend status: ${backendStatus.status || '--'}${backendStatus.pm2Managed ? ` via PM2 #${backendStatus.pm2Id}` : ' (direct process)'}`
-  );
+  setMetricText(metricLastRefresh, refreshTime);
   setMetricText(metricProcessMemory, `RSS ${formatBytes(processMemory.rssBytes)}`);
   setMetricText(
     metricProcessHeap,
     `Heap ${formatBytes(processMemory.heapUsedBytes)} / ${formatBytes(processMemory.heapTotalBytes)} (${Number(processMemory.heapUsedPercent || 0).toFixed(1)}%)`
   );
+  setMetricText(summaryHostname, runtime.hostname || '--');
+  setMetricText(summaryPlatform, runtime.platform || '--');
+  setMetricText(summaryNodeVersion, runtime.nodeVersion || '--');
+  setMetricText(summaryBackendStatus, backendStatusText);
 }
 
 async function pollMetrics() {
@@ -788,6 +834,9 @@ async function pollMetrics() {
     updateMetricValue(cpuChartValue, cpu);
     updateMetricValue(ramChartValue, ram);
     updateMetricValue(diskChartValue, disk);
+    updateStatusBadge(cpuStatus, cpu);
+    updateStatusBadge(ramStatus, ram);
+    updateStatusBadge(diskStatus, disk);
     clearMetricsError();
   } catch (error) {
     console.warn('[METRICS] Failed to refresh live metrics.', error.message);
@@ -905,6 +954,7 @@ function showMetricsDashboard() {
 
   analyzerView?.classList.add('hidden');
   metricsDashboardView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.add('active-view');
 
   requestAnimationFrame(() => {
     if (metricsCharts) {
@@ -918,6 +968,7 @@ function showMetricsDashboard() {
 function showAnalyzerView() {
   metricsDashboardView?.classList.add('hidden');
   analyzerView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
 }
 
 function applyTheme(theme) {
@@ -1003,6 +1054,7 @@ applyTheme(localStorage.getItem('themePreference') || 'dark');
 // INTERACTIVE EVENT LISTENERS & LOGIC
 // ==========================================
 
+appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
