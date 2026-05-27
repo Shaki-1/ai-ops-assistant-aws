@@ -19,6 +19,10 @@ AI_PROVIDER=groq
 GROQ_API_KEY=${groq_api_key}
 GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
+
+ADMIN_USERNAME=${admin_username}
+ADMIN_PASSWORD_HASH=${admin_password_hash}
+AUTH_TOKEN_SECRET=${auth_token_secret}
 ENVEOF
 
 pm2 start server.js --name ai-ops-backend

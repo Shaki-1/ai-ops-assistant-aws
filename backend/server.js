@@ -6,6 +6,8 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import OpenAI from 'openai';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 
 const execPromise = promisify(exec);
 
@@ -21,6 +23,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
+const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
 
 // Enable CORS and JSON parsing
 app.use(cors());
@@ -464,6 +469,31 @@ Based on diagnostic telemetry scans:
 `;
 }
 
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({
+      error: 'Authentication token missing.'
+    });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, AUTH_TOKEN_SECRET);
+
+    req.user = decoded;
+
+    next();
+  } catch (error) {
+    return res.status(403).json({
+      error: 'Invalid or expired token.'
+    });
+  }
+}
+
+
 // ==========================================
 // ENDPOINTS
 // ==========================================
@@ -472,6 +502,46 @@ Based on diagnostic telemetry scans:
  * @route   GET /api/status
  * @desc    Get dynamic server status parameters
  */
+
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({
+      error: 'Username and password are required.'
+    });
+  }
+
+  if (!ADMIN_PASSWORD_HASH) {
+    return res.status(500).json({
+      error: 'Authentication is not configured on the server.'
+    });
+  }
+
+  const usernameMatches = username === ADMIN_USERNAME;
+  const passwordMatches = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+
+  if (!usernameMatches || !passwordMatches) {
+    return res.status(401).json({
+      error: 'Invalid username or password.'
+    });
+  }
+
+  const token = jwt.sign(
+    { username: ADMIN_USERNAME, role: 'admin' },
+    AUTH_TOKEN_SECRET,
+    { expiresIn: '8h' }
+  );
+
+  res.json({
+    token,
+    user: {
+      username: ADMIN_USERNAME,
+      role: 'admin'
+    }
+  });
+});
+
 app.get('/api/status', async (req, res) => {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -499,7 +569,7 @@ app.get('/api/status', async (req, res) => {
  * @route   POST /api/analyze-log
  * @desc    Analyze server logs using GenAI (OpenAI API, Ollama, or Local Mock)
  */
-app.post('/api/analyze-log', async (req, res) => {
+app.post('/api/analyze-log', authenticateToken, async (req, res) => {
   const { logText } = req.body;
 
   if (!logText || logText.trim() === "") {
@@ -644,7 +714,7 @@ Rules:
  * @route   POST /api/generate-commands
  * @desc    Generate safe debugging and check commands
  */
-app.post('/api/generate-commands', async (req, res) => {
+app.post('/api/generate-commands', authenticateToken, async (req, res) => {
   const { logText, analysis } = req.body;
 
   if (!logText || logText.trim() === "") {
@@ -689,7 +759,7 @@ app.post('/api/generate-commands', async (req, res) => {
  * @route   POST /api/generate-report
  * @desc    Generate a structured professional incident report
  */
-app.post('/api/generate-report', async (req, res) => {
+app.post('/api/generate-report', authenticateToken, async (req, res) => {
   const { logText, analysis } = req.body;
 
   if (!logText || logText.trim() === "") {
@@ -724,7 +794,7 @@ app.post('/api/generate-report', async (req, res) => {
   }
 });
 
-app.post('/api/run-safe-check', async (req, res) => {
+app.post('/api/run-safe-check', authenticateToken, async (req, res) => {
   const { checkType } = req.body;
 
   const safeChecks = {
