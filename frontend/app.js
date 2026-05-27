@@ -10,14 +10,12 @@
 
 const API_BASE_URL = "/api";
 
-const authToken = localStorage.getItem('authToken');
-
 const loginScreen = document.getElementById('login-screen');
 const loginForm = document.getElementById('login-form');
 const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 
-if (authToken) {
+if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
 }
 
@@ -44,6 +42,7 @@ loginForm.addEventListener('submit', async (event) => {
 
     localStorage.setItem('authToken', data.token);
     loginScreen.classList.add('hidden');
+    startAuthenticatedSession();
 
   } catch (error) {
     loginError.classList.remove('hidden');
@@ -51,6 +50,7 @@ loginForm.addEventListener('submit', async (event) => {
 });
 
 logoutBtn.addEventListener('click', () => {
+  stopAuthenticatedSession();
   localStorage.removeItem('authToken');
   window.location.reload();
 });
@@ -72,6 +72,14 @@ const LOG_TEMPLATES = {
 let activeAnalysisResult = null;
 let currentActiveLog = "";
 let isOfflineMode = false;
+let healthPollIntervalId = null;
+let metricsPollIntervalId = null;
+let clockIntervalId = null;
+let metricsCharts = null;
+
+const METRICS_REFRESH_MS = 5000;
+const HEALTH_REFRESH_MS = 10000;
+const MAX_METRIC_POINTS = 20;
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -83,6 +91,10 @@ const diskFill = document.getElementById('disk-fill');
 const diskDetails = document.getElementById('disk-details');
 const lastPolledText = document.getElementById('last-polled-time');
 const headerClock = document.getElementById('header-clock');
+const metricsError = document.getElementById('metrics-error');
+const cpuChartValue = document.getElementById('cpu-chart-value');
+const ramChartValue = document.getElementById('ram-chart-value');
+const diskChartValue = document.getElementById('disk-chart-value');
 
 const demoSelect = document.getElementById('demo-select');
 const logInput = document.getElementById('log-input');
@@ -487,6 +499,190 @@ function parseMarkdownToHTML(markdown) {
 }
 
 // ==========================================
+// LIVE RESOURCE METRICS CHARTS (GET /api/metrics)
+// ==========================================
+
+function createMetricChart(canvasId, label, color) {
+  const canvas = document.getElementById(canvasId);
+
+  if (!canvas || !window.Chart) {
+    return null;
+  }
+
+  return new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label,
+        data: [],
+        borderColor: color,
+        backgroundColor: `${color}22`,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        fill: true,
+        tension: 0.35
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.dataset.label}: ${context.parsed.y}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            color: 'rgba(255, 255, 255, 0.04)'
+          },
+          ticks: {
+            color: '#64748b',
+            maxTicksLimit: 4,
+            font: {
+              size: 10
+            }
+          }
+        },
+        y: {
+          min: 0,
+          max: 100,
+          grid: {
+            color: 'rgba(255, 255, 255, 0.06)'
+          },
+          ticks: {
+            color: '#64748b',
+            stepSize: 50,
+            callback: (value) => `${value}%`,
+            font: {
+              size: 10
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function initializeMetricsCharts() {
+  if (metricsCharts) {
+    return true;
+  }
+
+  if (!window.Chart) {
+    showMetricsError('Live charts could not load. Check the Chart.js script connection.');
+    return false;
+  }
+
+  metricsCharts = {
+    cpu: createMetricChart('cpu-chart', 'CPU', '#3b82f6'),
+    ram: createMetricChart('ram-chart', 'RAM', '#10b981'),
+    disk: createMetricChart('disk-chart', 'Disk', '#f59e0b')
+  };
+
+  return Object.values(metricsCharts).every(Boolean);
+}
+
+function destroyMetricsCharts() {
+  if (!metricsCharts) {
+    return;
+  }
+
+  Object.values(metricsCharts).forEach((chart) => chart?.destroy());
+  metricsCharts = null;
+}
+
+function showMetricsError(message = 'Live metrics are temporarily unavailable.') {
+  if (!metricsError) {
+    return;
+  }
+
+  metricsError.textContent = message;
+  metricsError.classList.remove('hidden');
+}
+
+function clearMetricsError() {
+  metricsError?.classList.add('hidden');
+}
+
+function appendMetricPoint(chart, label, value) {
+  if (!chart || !Number.isFinite(value)) {
+    return;
+  }
+
+  chart.data.labels.push(label);
+  chart.data.datasets[0].data.push(value);
+
+  if (chart.data.labels.length > MAX_METRIC_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+
+  chart.update('none');
+}
+
+function updateMetricValue(element, value) {
+  if (element && Number.isFinite(value)) {
+    element.textContent = `${value.toFixed(1)}%`;
+  }
+}
+
+async function pollMetrics() {
+  if (!initializeMetricsCharts()) {
+    return;
+  }
+
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    stopAuthenticatedSession();
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/metrics`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Metrics request failed with ${response.status}`);
+    }
+
+    const metrics = await response.json();
+    const pointLabel = new Date(metrics.timestamp).toLocaleTimeString();
+    const cpu = Number(metrics.cpuLoadPercent);
+    const ram = Number(metrics.memoryUsagePercent);
+    const disk = Number(metrics.diskUsagePercent);
+
+    appendMetricPoint(metricsCharts.cpu, pointLabel, cpu);
+    appendMetricPoint(metricsCharts.ram, pointLabel, ram);
+    appendMetricPoint(metricsCharts.disk, pointLabel, disk);
+
+    updateMetricValue(cpuChartValue, cpu);
+    updateMetricValue(ramChartValue, ram);
+    updateMetricValue(diskChartValue, disk);
+    clearMetricsError();
+  } catch (error) {
+    console.warn('[METRICS] Failed to refresh live metrics.', error.message);
+    showMetricsError();
+  }
+}
+
+// ==========================================
 // HOST TELEMETRY POLLER (GET /api/status)
 // ==========================================
 
@@ -589,11 +785,49 @@ function updateHeaderClock() {
   headerClock.textContent = clock.toLocaleTimeString('en-US', { hour12: false });
 }
 
-// Initialize Poller loops
-pollServerHealth();
-updateHeaderClock();
-setInterval(pollServerHealth, 10000);
-setInterval(updateHeaderClock, 1000);
+function startAuthenticatedSession() {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  updateHeaderClock();
+
+  if (!clockIntervalId) {
+    clockIntervalId = setInterval(updateHeaderClock, 1000);
+  }
+
+  if (!healthPollIntervalId) {
+    pollServerHealth();
+    healthPollIntervalId = setInterval(pollServerHealth, HEALTH_REFRESH_MS);
+  }
+
+  if (!metricsPollIntervalId) {
+    pollMetrics();
+    metricsPollIntervalId = setInterval(pollMetrics, METRICS_REFRESH_MS);
+  }
+}
+
+function stopAuthenticatedSession() {
+  if (healthPollIntervalId) {
+    clearInterval(healthPollIntervalId);
+    healthPollIntervalId = null;
+  }
+
+  if (metricsPollIntervalId) {
+    clearInterval(metricsPollIntervalId);
+    metricsPollIntervalId = null;
+  }
+
+  if (clockIntervalId) {
+    clearInterval(clockIntervalId);
+    clockIntervalId = null;
+  }
+
+  destroyMetricsCharts();
+  clearMetricsError();
+}
+
+startAuthenticatedSession();
 
 // ==========================================
 // INTERACTIVE EVENT LISTENERS & LOGIC
@@ -1096,4 +1330,3 @@ history.slice(0, 5).forEach(item => {
 // Load history on page start
 renderHistory();
 window.renderHistory = renderHistory;
-

@@ -231,6 +231,38 @@ async function getDiskUsage() {
   };
 }
 
+function parseUsagePercent(value) {
+  const parsed = parseFloat(String(value).replace('%', ''));
+  return Number.isFinite(parsed) ? Number(parsed.toFixed(1)) : 0;
+}
+
+function getCpuTimes() {
+  return os.cpus().reduce(
+    (totals, cpu) => {
+      totals.idle += cpu.times.idle;
+      totals.total += Object.values(cpu.times).reduce((sum, time) => sum + time, 0);
+      return totals;
+    },
+    { idle: 0, total: 0 }
+  );
+}
+
+async function getCpuLoadPercent() {
+  const start = getCpuTimes();
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const end = getCpuTimes();
+  const idleDelta = end.idle - start.idle;
+  const totalDelta = end.total - start.total;
+
+  if (totalDelta <= 0) {
+    return 0;
+  }
+
+  return Number((((totalDelta - idleDelta) / totalDelta) * 100).toFixed(1));
+}
+
 // ==========================================
 // MOCK AI ENGINE (For demo out-of-the-box)
 // ==========================================
@@ -563,6 +595,27 @@ app.get('/api/status', async (req, res) => {
   };
 
   res.json(statusResponse);
+});
+
+app.get('/api/metrics', authenticateToken, async (req, res) => {
+  try {
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMem = totalMem - freeMem;
+    const dynamicDisk = await getDiskUsage();
+
+    res.json({
+      cpuLoadPercent: await getCpuLoadPercent(),
+      memoryUsagePercent: Number(((usedMem / totalMem) * 100).toFixed(1)),
+      diskUsagePercent: parseUsagePercent(dynamicDisk.percentUsed),
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[METRICS ERROR]', error);
+    res.status(500).json({
+      error: 'Could not retrieve server metrics.'
+    });
+  }
 });
 
 /**

@@ -105,6 +105,40 @@
           </div>
         </div>
 
+        <div class="metrics-charts" aria-label="Live resource usage charts">
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <span>CPU Usage %</span>
+              <span class="chart-value" id="cpu-chart-value">--%</span>
+            </div>
+            <div class="chart-frame">
+              <canvas id="cpu-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <span>RAM Usage %</span>
+              <span class="chart-value" id="ram-chart-value">--%</span>
+            </div>
+            <div class="chart-frame">
+              <canvas id="ram-chart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <span>Disk Usage %</span>
+              <span class="chart-value" id="disk-chart-value">--%</span>
+            </div>
+            <div class="chart-frame">
+              <canvas id="disk-chart"></canvas>
+            </div>
+          </div>
+
+          <p class="metrics-error hidden" id="metrics-error">Live metrics are temporarily unavailable.</p>
+        </div>
+
         <div class="health-footer">
           <span>Last Polled: <span id="last-polled-time">Never</span></span>
         </div>
@@ -407,6 +441,7 @@
     </div>
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
