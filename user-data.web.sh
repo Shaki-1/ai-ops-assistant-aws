@@ -24,6 +24,9 @@ ENVEOF
 pm2 start server.js --name ai-ops-backend
 pm2 save
 
+pm2 startup systemd -u ec2-user --hp /home/ec2-user
+env PATH=$PATH:/usr/bin pm2 save
+
 cat > /etc/nginx/conf.d/ai-ops-assistant.conf <<NGINXEOF
 server {
     listen 80;
