@@ -50,6 +50,10 @@ server {
 NGINXEOF
 
 rm -f /etc/nginx/conf.d/default.conf
+
+chmod o+x /home/ec2-user
+chmod -R o+rx /home/ec2-user/ai-ops-assistant-aws/frontend
+
 systemctl restart nginx
 
 cat > /home/ec2-user/duckdns.sh <<DUCKEOF
