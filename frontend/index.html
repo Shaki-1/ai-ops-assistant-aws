@@ -475,40 +475,6 @@
         </div>
       </div>
 
-      <section class="alerts-panel" aria-labelledby="alerts-title">
-        <div class="alerts-header">
-          <div>
-            <h3 id="alerts-title">Operational Alerts</h3>
-            <p>Live threshold alerts from CPU, RAM, disk, API latency, failed requests, and AI failures.</p>
-          </div>
-          <button id="ai-alerts-btn" class="btn-secondary">AI Explain Alerts</button>
-        </div>
-        <div class="alerts-list" id="alerts-list">
-          <p class="feedback-status">No active alerts</p>
-        </div>
-        <div class="loading-state hidden compact-loading" id="ai-alerts-loading">
-          <div class="spinner"></div>
-          <p>Explaining active alerts...</p>
-        </div>
-        <div class="ai-alerts-results hidden" id="ai-alerts-results">
-          <p id="ai-alerts-summary"></p>
-          <div class="ai-metrics-columns">
-            <div>
-              <h4>Likely Causes</h4>
-              <ul class="styled-list" id="ai-alerts-causes"></ul>
-            </div>
-            <div>
-              <h4>First Checks</h4>
-              <ul class="styled-list" id="ai-alerts-checks"></ul>
-            </div>
-            <div>
-              <h4>Priority Actions</h4>
-              <ul class="styled-list" id="ai-alerts-actions"></ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <div class="metrics-charts metrics-dashboard-grid" aria-label="Live resource usage charts">
         <div class="chart-card">
           <div class="chart-card-header">
@@ -552,38 +518,82 @@
         <p class="metrics-error hidden" id="metrics-error">Live metrics are temporarily unavailable.</p>
       </div>
 
-      <section class="ai-metrics-panel" aria-labelledby="ai-metrics-title">
+      <section class="alerts-panel collapsible-panel" id="alerts-panel" aria-labelledby="alerts-title">
+        <div class="alerts-header">
+          <div>
+            <h3 id="alerts-title">Operational Alerts</h3>
+            <p>Live threshold alerts from CPU, RAM, disk, API latency, failed requests, and AI failures.</p>
+          </div>
+          <div class="panel-header-actions">
+            <button id="toggle-alerts-panel-btn" class="btn-secondary" aria-expanded="true">Collapse</button>
+            <button id="ai-alerts-btn" class="btn-secondary">AI Explain Alerts</button>
+          </div>
+        </div>
+        <div class="collapsible-panel-body" id="alerts-panel-body">
+          <div class="alerts-list" id="alerts-list">
+            <p class="feedback-status">No active alerts</p>
+          </div>
+          <div class="loading-state hidden compact-loading" id="ai-alerts-loading">
+            <div class="spinner"></div>
+            <p>Explaining active alerts...</p>
+          </div>
+          <div class="ai-alerts-results hidden" id="ai-alerts-results">
+            <p id="ai-alerts-summary"></p>
+            <div class="ai-metrics-columns">
+              <div>
+                <h4>Likely Causes</h4>
+                <ul class="styled-list" id="ai-alerts-causes"></ul>
+              </div>
+              <div>
+                <h4>First Checks</h4>
+                <ul class="styled-list" id="ai-alerts-checks"></ul>
+              </div>
+              <div>
+                <h4>Priority Actions</h4>
+                <ul class="styled-list" id="ai-alerts-actions"></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ai-metrics-panel collapsible-panel" id="ai-metrics-panel" aria-labelledby="ai-metrics-title">
         <div class="ai-metrics-header">
           <div>
             <h3 id="ai-metrics-title">AI Metrics Insight</h3>
             <p>AI reviews live CPU, RAM, disk, latency, and request health.</p>
           </div>
-          <button id="ai-metrics-btn" class="btn-secondary">AI Analyze Metrics</button>
-        </div>
-
-        <div class="loading-state hidden compact-loading" id="ai-metrics-loading">
-          <div class="spinner"></div>
-          <p>Reviewing live metrics...</p>
-        </div>
-
-        <div class="ai-metrics-results hidden" id="ai-metrics-results">
-          <div class="ai-metrics-summary-row">
-            <span class="badge" id="ai-metrics-health">Healthy</span>
-            <span id="ai-metrics-confidence">Confidence: --</span>
+          <div class="panel-header-actions">
+            <button id="toggle-ai-metrics-panel-btn" class="btn-secondary" aria-expanded="true">Collapse</button>
+            <button id="ai-metrics-btn" class="btn-secondary">AI Analyze Metrics</button>
           </div>
-          <p id="ai-metrics-summary"></p>
-          <div class="ai-metrics-columns">
-            <div>
-              <h4>Risks</h4>
-              <ul class="styled-list" id="ai-metrics-risks"></ul>
+        </div>
+
+        <div class="collapsible-panel-body" id="ai-metrics-panel-body">
+          <div class="loading-state hidden compact-loading" id="ai-metrics-loading">
+            <div class="spinner"></div>
+            <p>Reviewing live metrics...</p>
+          </div>
+
+          <div class="ai-metrics-results hidden" id="ai-metrics-results">
+            <div class="ai-metrics-summary-row">
+              <span class="badge" id="ai-metrics-health">Healthy</span>
+              <span id="ai-metrics-confidence">Confidence: --</span>
             </div>
-            <div>
-              <h4>Recommendations</h4>
-              <ul class="styled-list" id="ai-metrics-recommendations"></ul>
-            </div>
-            <div>
-              <h4>Priority Actions</h4>
-              <ul class="styled-list" id="ai-metrics-priority"></ul>
+            <p id="ai-metrics-summary"></p>
+            <div class="ai-metrics-columns">
+              <div>
+                <h4>Risks</h4>
+                <ul class="styled-list" id="ai-metrics-risks"></ul>
+              </div>
+              <div>
+                <h4>Recommendations</h4>
+                <ul class="styled-list" id="ai-metrics-recommendations"></ul>
+              </div>
+              <div>
+                <h4>Priority Actions</h4>
+                <ul class="styled-list" id="ai-metrics-priority"></ul>
+              </div>
             </div>
           </div>
         </div>

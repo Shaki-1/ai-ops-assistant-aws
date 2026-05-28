@@ -1608,7 +1608,7 @@ app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user
   res.json({ saved: true, ticket });
 });
 
-app.post('/api/tickets/:id/reply', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const message = String(req.body?.message || '').trim();
 
   if (!message) {
@@ -1623,6 +1623,12 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireAdmin, async (req, 
   if (!ticket) {
     return res.status(404).json({
       error: 'Ticket not found.'
+    });
+  }
+
+  if (!canViewTicket(ticket, req.user)) {
+    return res.status(403).json({
+      error: 'You can only reply to visible tickets.'
     });
   }
 

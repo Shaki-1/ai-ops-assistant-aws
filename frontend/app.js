@@ -425,6 +425,8 @@ const lastPolledText = document.getElementById('last-polled-time');
 const headerClock = document.getElementById('header-clock');
 const metricsError = document.getElementById('metrics-error');
 const aiMetricsBtn = document.getElementById('ai-metrics-btn');
+const toggleAiMetricsPanelBtn = document.getElementById('toggle-ai-metrics-panel-btn');
+const aiMetricsPanelBody = document.getElementById('ai-metrics-panel-body');
 const aiMetricsLoading = document.getElementById('ai-metrics-loading');
 const aiMetricsResults = document.getElementById('ai-metrics-results');
 const aiMetricsSummary = document.getElementById('ai-metrics-summary');
@@ -435,6 +437,8 @@ const aiMetricsPriority = document.getElementById('ai-metrics-priority');
 const aiMetricsConfidence = document.getElementById('ai-metrics-confidence');
 const alertsList = document.getElementById('alerts-list');
 const aiAlertsBtn = document.getElementById('ai-alerts-btn');
+const toggleAlertsPanelBtn = document.getElementById('toggle-alerts-panel-btn');
+const alertsPanelBody = document.getElementById('alerts-panel-body');
 const aiAlertsLoading = document.getElementById('ai-alerts-loading');
 const aiAlertsResults = document.getElementById('ai-alerts-results');
 const aiAlertsSummary = document.getElementById('ai-alerts-summary');
@@ -1485,6 +1489,17 @@ function updateDashboardAlertBadge(count) {
 
   badge.textContent = numericCount > 9 ? '9+' : String(numericCount);
   dashboardViewBtn.classList.add('has-notification');
+}
+
+function toggleCollapsiblePanel(bodyElement, buttonElement) {
+  if (!bodyElement || !buttonElement) {
+    return;
+  }
+
+  const shouldCollapse = !bodyElement.classList.contains('hidden');
+  bodyElement.classList.toggle('hidden', shouldCollapse);
+  buttonElement.textContent = shouldCollapse ? 'Expand' : 'Collapse';
+  buttonElement.setAttribute('aria-expanded', String(!shouldCollapse));
 }
 
 function renderAlerts(alerts = []) {
@@ -2550,6 +2565,8 @@ simulationBackBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 aiAlertsBtn?.addEventListener('click', analyzeAlertsWithAI);
+toggleAlertsPanelBtn?.addEventListener('click', () => toggleCollapsiblePanel(alertsPanelBody, toggleAlertsPanelBtn));
+toggleAiMetricsPanelBtn?.addEventListener('click', () => toggleCollapsiblePanel(aiMetricsPanelBody, toggleAiMetricsPanelBtn));
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
@@ -3261,15 +3278,16 @@ function renderTickets(tickets = []) {
     const repliesHtml = replies.length
       ? `<div class="ticket-replies">${replies.map((reply) => `<p><strong>${escapeHtml(reply.from)}:</strong> ${escapeHtml(reply.message)}</p>`).join('')}</div>`
       : '<p class="ticket-muted">No admin reply yet.</p>';
-    const adminControls = isAdminUser()
-      ? `<div class="ticket-admin-controls">
-          <select data-ticket-status="${ticket.id}">
-            ${['New', 'In progress', 'Resolved'].map((status) => `<option value="${status}" ${ticket.status === status ? 'selected' : ''}>${status}</option>`).join('')}
-          </select>
-          <input type="text" data-ticket-reply="${ticket.id}" placeholder="Short admin reply">
-          <button class="btn-secondary" data-ticket-reply-btn="${ticket.id}">Reply</button>
-        </div>`
-      : '';
+    const statusControl = isAdminUser()
+      ? `<select data-ticket-status="${ticket.id}">
+          ${['New', 'In progress', 'Resolved'].map((status) => `<option value="${status}" ${ticket.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+        </select>`
+      : '<span class="ticket-reply-spacer"></span>';
+    const replyControls = `<div class="ticket-admin-controls">
+        ${statusControl}
+        <input type="text" data-ticket-reply="${ticket.id}" placeholder="${isAdminUser() ? 'Short admin reply' : 'Reply to admin message'}">
+        <button class="btn-secondary" data-ticket-reply-btn="${ticket.id}">Reply</button>
+      </div>`;
     const canDeleteTicket = isAdminUser() || ticket.from === getCurrentUsername();
     const deleteControl = canDeleteTicket
       ? `<button class="btn-secondary btn-danger-light" data-ticket-delete="${ticket.id}">Delete</button>`
@@ -3290,7 +3308,7 @@ function renderTickets(tickets = []) {
       </div>
       <p>${escapeHtml(ticket.message || '')}</p>
       ${repliesHtml}
-      ${adminControls}
+      ${replyControls}
     `;
     ticketList.appendChild(item);
   });
