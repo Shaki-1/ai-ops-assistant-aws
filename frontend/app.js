@@ -395,6 +395,7 @@ let metricsPollIntervalId = null;
 let clockIntervalId = null;
 let metricsCharts = null;
 let latestMetrics = null;
+let latestAlerts = [];
 let selectedSimulationScenario = null;
 let latestSecurityStatus = null;
 let inactivityTimeoutId = null;
@@ -432,6 +433,14 @@ const aiMetricsRisks = document.getElementById('ai-metrics-risks');
 const aiMetricsRecommendations = document.getElementById('ai-metrics-recommendations');
 const aiMetricsPriority = document.getElementById('ai-metrics-priority');
 const aiMetricsConfidence = document.getElementById('ai-metrics-confidence');
+const alertsList = document.getElementById('alerts-list');
+const aiAlertsBtn = document.getElementById('ai-alerts-btn');
+const aiAlertsLoading = document.getElementById('ai-alerts-loading');
+const aiAlertsResults = document.getElementById('ai-alerts-results');
+const aiAlertsSummary = document.getElementById('ai-alerts-summary');
+const aiAlertsCauses = document.getElementById('ai-alerts-causes');
+const aiAlertsChecks = document.getElementById('ai-alerts-checks');
+const aiAlertsActions = document.getElementById('ai-alerts-actions');
 const simulationScenarios = document.getElementById('simulation-scenarios');
 const simulationAlertBadge = document.getElementById('simulation-alert-badge');
 const simulationSelectedTitle = document.getElementById('simulation-selected-title');
@@ -1440,6 +1449,224 @@ function setAiMetricsHealthBadge(health) {
   aiMetricsHealth.className = `badge ${classMap[normalizedHealth]}`;
 }
 
+function getAlertBadgeClass(severity) {
+  const normalizedSeverity = String(severity || 'Info').toLowerCase();
+
+  if (normalizedSeverity === 'critical') {
+    return 'badge-critical';
+  }
+
+  if (normalizedSeverity === 'warning') {
+    return 'badge-medium';
+  }
+
+  return 'badge-status-default';
+}
+
+function updateDashboardAlertBadge(count) {
+  if (!dashboardViewBtn) {
+    return;
+  }
+
+  const numericCount = Math.max(0, Number(count) || 0);
+  let badge = dashboardViewBtn.querySelector('.dashboard-alert-badge');
+
+  if (!numericCount) {
+    badge?.remove();
+    dashboardViewBtn.classList.remove('has-notification');
+    return;
+  }
+
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'dashboard-alert-badge inbox-notification-badge';
+    dashboardViewBtn.appendChild(badge);
+  }
+
+  badge.textContent = numericCount > 9 ? '9+' : String(numericCount);
+  dashboardViewBtn.classList.add('has-notification');
+}
+
+function renderAlerts(alerts = []) {
+  if (!alertsList) {
+    return;
+  }
+
+  const activeAlerts = alerts.filter((alert) => alert.status === 'Active');
+  const resolvedAlerts = alerts.filter((alert) => alert.status !== 'Active').slice(0, 4);
+  latestAlerts = alerts;
+  updateDashboardAlertBadge(activeAlerts.length);
+  alertsList.innerHTML = '';
+
+  if (!activeAlerts.length) {
+    alertsList.innerHTML = '<p class="feedback-status">No active alerts</p>';
+  } else {
+    activeAlerts.forEach((alert) => {
+      alertsList.appendChild(renderAlertCard(alert, true));
+    });
+  }
+
+  if (resolvedAlerts.length) {
+    const resolvedWrap = document.createElement('div');
+    resolvedWrap.className = 'resolved-alerts';
+    resolvedWrap.innerHTML = '<h4>Recently Resolved</h4>';
+    resolvedAlerts.forEach((alert) => resolvedWrap.appendChild(renderAlertCard(alert, false)));
+    alertsList.appendChild(resolvedWrap);
+  }
+}
+
+function renderAlertCard(alert, isActive) {
+  const item = document.createElement('article');
+  item.className = `alert-item ${String(alert.severity || 'Info').toLowerCase()} ${isActive ? 'active' : 'resolved'}`;
+  item.innerHTML = `
+    <div class="alert-item-header">
+      <span class="badge ${getAlertBadgeClass(alert.severity)}">${escapeHtml(alert.severity || 'Info')}</span>
+      <strong>${escapeHtml(alert.title || 'Operational alert')}</strong>
+      <span>${escapeHtml(alert.status || 'Active')}</span>
+    </div>
+    <p>${escapeHtml(alert.message || '')}</p>
+    <div class="alert-meta">
+      <span>Source: ${escapeHtml(alert.source || '--')}</span>
+      <span>Value: ${escapeHtml(alert.value ?? '--')}</span>
+      <span>Threshold: ${escapeHtml(alert.threshold ?? '--')}</span>
+      <span>${new Date(alert.createdAt || Date.now()).toLocaleString()}</span>
+    </div>
+    ${isActive ? `<button class="btn-secondary" data-alert-ack="${alert.id}">Acknowledge</button>` : ''}
+  `;
+  return item;
+}
+
+async function refreshAlerts() {
+  const token = localStorage.getItem('authToken');
+
+  if (!token || !isAdminUser()) {
+    updateDashboardAlertBadge(0);
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/alerts`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Alerts request failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    renderAlerts(data.alerts || []);
+  } catch (error) {
+    console.warn('[ALERTS] Failed to refresh alerts.', error.message);
+  }
+}
+
+async function acknowledgeAlert(alertId) {
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/acknowledge`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Alert acknowledge failed with ${response.status}`);
+    }
+
+    await refreshAlerts();
+  } catch (error) {
+    showMetricsError('Could not acknowledge alert right now.');
+  }
+}
+
+function renderAiAlertsAnalysis(data) {
+  setMetricText(aiAlertsSummary, data.summary || 'No alert summary returned.');
+  renderPlainList(aiAlertsCauses, data.likelyCauses);
+  renderPlainList(aiAlertsChecks, data.recommendedFirstChecks);
+  renderPlainList(aiAlertsActions, data.priorityActions);
+  aiAlertsResults?.classList.remove('hidden');
+}
+
+function getFallbackAlertsAnalysis(alerts = []) {
+  const activeAlerts = alerts.filter((alert) => alert.status === 'Active');
+
+  return {
+    summary: activeAlerts.length
+      ? `${activeAlerts.length} active alert(s) are above configured thresholds.`
+      : 'No active alerts are currently above configured thresholds.',
+    likelyCauses: activeAlerts.length
+      ? activeAlerts.map((alert) => `${alert.title}: ${alert.message}`)
+      : ['Current metrics are within configured alert thresholds.'],
+    recommendedFirstChecks: [
+      'Review CPU, RAM, disk, latency, failed request, and AI failure counters.',
+      'Check backend logs around the alert creation time.',
+      'Confirm whether recent deploys or traffic changes match the alert timing.'
+    ],
+    priorityActions: activeAlerts.some((alert) => alert.severity === 'Critical')
+      ? activeAlerts.filter((alert) => alert.severity === 'Critical').map((alert) => `Prioritize ${alert.title}.`)
+      : ['Acknowledge reviewed warnings and continue monitoring.']
+  };
+}
+
+async function analyzeAlertsWithAI() {
+  const token = localStorage.getItem('authToken');
+
+  if (!token || !isAdminUser()) {
+    showMetricsError('Admin access required for alert analysis.');
+    return;
+  }
+
+  aiAlertsLoading?.classList.remove('hidden');
+  aiAlertsResults?.classList.add('hidden');
+
+  if (aiAlertsBtn) {
+    aiAlertsBtn.disabled = true;
+  }
+
+  try {
+    if (!latestMetrics) {
+      await pollMetrics();
+    }
+
+    const activeAlerts = latestAlerts.filter((alert) => alert.status === 'Active');
+    const response = await fetch(`${API_BASE_URL}/analyze-alerts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        alerts: activeAlerts,
+        metrics: latestMetrics
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Alert AI request failed with ${response.status}`);
+    }
+
+    renderAiAlertsAnalysis(await response.json());
+    clearMetricsError();
+  } catch (error) {
+    console.warn('[AI ALERTS] Falling back to local alert explanation.', error.message);
+    renderAiAlertsAnalysis(getFallbackAlertsAnalysis(latestAlerts));
+  } finally {
+    aiAlertsLoading?.classList.add('hidden');
+
+    if (aiAlertsBtn) {
+      aiAlertsBtn.disabled = false;
+    }
+  }
+}
+
 function renderAiMetricsAnalysis(data) {
   setAiMetricsHealthBadge(data.overallHealth);
   setMetricText(aiMetricsConfidence, `Confidence: ${data.confidenceLevel || '--'}`);
@@ -1644,6 +1871,7 @@ async function pollMetrics() {
 
     const metrics = await response.json();
     latestMetrics = metrics;
+    renderAlerts(metrics.alerts || []);
     const pointLabel = new Date(metrics.timestamp).toLocaleTimeString();
     const cpu = Number(metrics.cpuLoadPercent);
     const ram = Number(metrics.memoryUsagePercent);
@@ -2293,6 +2521,8 @@ function stopAuthenticatedSession() {
   destroyMetricsCharts();
   clearMetricsError();
   latestMetrics = null;
+  latestAlerts = [];
+  updateDashboardAlertBadge(0);
 }
 
 startAuthenticatedSession();
@@ -2319,6 +2549,7 @@ simulationLabBtn?.addEventListener('click', showSimulationLab);
 simulationBackBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
+aiAlertsBtn?.addEventListener('click', analyzeAlertsWithAI);
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
@@ -2353,6 +2584,14 @@ ticketList?.addEventListener('click', (event) => {
 
   if (deleteTicketId) {
     deleteTicket(deleteTicketId);
+  }
+});
+
+alertsList?.addEventListener('click', (event) => {
+  const alertId = event.target?.dataset?.alertAck;
+
+  if (alertId) {
+    acknowledgeAlert(alertId);
   }
 });
 clearLocalHistoryBtn?.addEventListener('click', () => {

@@ -37,6 +37,22 @@ const apiRuntimeMetrics = {
   failedAIAnalyses: 0
 };
 
+const operationalAlerts = [];
+const acknowledgedAlertValues = new Map();
+
+const ALERT_THRESHOLDS = {
+  cpuWarning: 75,
+  cpuCritical: 90,
+  ramWarning: 75,
+  ramCritical: 90,
+  diskWarning: 80,
+  diskCritical: 90,
+  latencyWarning: 1000,
+  latencyCritical: 3000,
+  failedRequestsWarning: 0,
+  aiFailuresWarning: 0
+};
+
 // Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
@@ -315,7 +331,7 @@ async function getServerMetricsSnapshot() {
     ? apiRuntimeMetrics.totalLatencyMs / apiRuntimeMetrics.totalRequests
     : 0;
 
-  return {
+  const metrics = {
     cpuLoadPercent: await getCpuLoadPercent(),
     memoryUsagePercent: Number(((usedMem / totalMem) * 100).toFixed(1)),
     diskUsagePercent: parseUsagePercent(dynamicDisk.percentUsed),
@@ -346,6 +362,189 @@ async function getServerMetricsSnapshot() {
     },
     timestamp: new Date().toISOString()
   };
+
+  evaluateOperationalAlerts(metrics);
+  metrics.alerts = getAlertsSnapshot();
+  return metrics;
+}
+
+function createAlertId(type) {
+  return `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function getAlertsSnapshot() {
+  return operationalAlerts
+    .slice()
+    .sort((a, b) => {
+      if (a.status !== b.status) {
+        return a.status === 'Active' ? -1 : 1;
+      }
+
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+}
+
+function getActiveAlertCount() {
+  return operationalAlerts.filter((alert) => alert.status === 'Active').length;
+}
+
+function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
+  const alert = operationalAlerts.find((item) => item.type === type && item.status === 'Active');
+
+  if (!alert) {
+    return;
+  }
+
+  alert.status = 'Resolved';
+  alert.resolvedAt = resolvedAt;
+}
+
+function upsertOperationalAlert(definition) {
+  const now = new Date().toISOString();
+  const acknowledgedValue = acknowledgedAlertValues.get(definition.type);
+
+  if (acknowledgedValue !== undefined && Number(definition.value) <= Number(acknowledgedValue)) {
+    return;
+  }
+
+  acknowledgedAlertValues.delete(definition.type);
+
+  const existing = operationalAlerts.find((alert) => alert.type === definition.type && alert.status === 'Active');
+
+  if (existing) {
+    existing.severity = definition.severity;
+    existing.title = definition.title;
+    existing.message = definition.message;
+    existing.value = definition.value;
+    existing.threshold = definition.threshold;
+    existing.updatedAt = now;
+    return;
+  }
+
+  operationalAlerts.unshift({
+    id: createAlertId(definition.type),
+    type: definition.type,
+    severity: definition.severity,
+    title: definition.title,
+    message: definition.message,
+    source: definition.source,
+    value: definition.value,
+    threshold: definition.threshold,
+    createdAt: now,
+    status: 'Active'
+  });
+
+  if (operationalAlerts.length > 100) {
+    operationalAlerts.length = 100;
+  }
+}
+
+function evaluateThresholdAlert({ type, value, warning, critical, source, titleBase, unit = '' }) {
+  const numericValue = Number(value || 0);
+
+  if (numericValue >= critical) {
+    upsertOperationalAlert({
+      type,
+      severity: 'Critical',
+      title: `${titleBase} critical`,
+      message: `${titleBase} is ${numericValue}${unit}, at or above the critical threshold ${critical}${unit}.`,
+      source,
+      value: numericValue,
+      threshold: critical
+    });
+    return;
+  }
+
+  if (numericValue >= warning) {
+    upsertOperationalAlert({
+      type,
+      severity: 'Warning',
+      title: `${titleBase} warning`,
+      message: `${titleBase} is ${numericValue}${unit}, at or above the warning threshold ${warning}${unit}.`,
+      source,
+      value: numericValue,
+      threshold: warning
+    });
+    return;
+  }
+
+  acknowledgedAlertValues.delete(type);
+  resolveActiveAlert(type);
+}
+
+function evaluateCountAlert({ type, value, threshold, source, title, message }) {
+  const numericValue = Number(value || 0);
+
+  if (numericValue > threshold) {
+    upsertOperationalAlert({
+      type,
+      severity: 'Warning',
+      title,
+      message,
+      source,
+      value: numericValue,
+      threshold
+    });
+    return;
+  }
+
+  acknowledgedAlertValues.delete(type);
+  resolveActiveAlert(type);
+}
+
+function evaluateOperationalAlerts(metrics) {
+  evaluateThresholdAlert({
+    type: 'cpu',
+    value: metrics.cpuLoadPercent,
+    warning: ALERT_THRESHOLDS.cpuWarning,
+    critical: ALERT_THRESHOLDS.cpuCritical,
+    source: 'system.cpu',
+    titleBase: 'CPU usage',
+    unit: '%'
+  });
+  evaluateThresholdAlert({
+    type: 'ram',
+    value: metrics.memoryUsagePercent,
+    warning: ALERT_THRESHOLDS.ramWarning,
+    critical: ALERT_THRESHOLDS.ramCritical,
+    source: 'system.memory',
+    titleBase: 'RAM usage',
+    unit: '%'
+  });
+  evaluateThresholdAlert({
+    type: 'disk',
+    value: metrics.diskUsagePercent,
+    warning: ALERT_THRESHOLDS.diskWarning,
+    critical: ALERT_THRESHOLDS.diskCritical,
+    source: 'system.disk',
+    titleBase: 'Disk usage',
+    unit: '%'
+  });
+  evaluateThresholdAlert({
+    type: 'api_latency',
+    value: metrics.requests?.averageLatencyMs,
+    warning: ALERT_THRESHOLDS.latencyWarning,
+    critical: ALERT_THRESHOLDS.latencyCritical,
+    source: 'api.latency',
+    titleBase: 'API latency',
+    unit: ' ms'
+  });
+  evaluateCountAlert({
+    type: 'failed_requests',
+    value: metrics.requests?.failed,
+    threshold: ALERT_THRESHOLDS.failedRequestsWarning,
+    source: 'api.requests',
+    title: 'Failed requests detected',
+    message: `${Number(metrics.requests?.failed || 0)} failed API request(s) have been recorded.`
+  });
+  evaluateCountAlert({
+    type: 'ai_failures',
+    value: metrics.aiAnalyses?.failed,
+    threshold: ALERT_THRESHOLDS.aiFailuresWarning,
+    source: 'ai.analysis',
+    title: 'AI analysis failures detected',
+    message: `${Number(metrics.aiAnalyses?.failed || 0)} failed AI analysis request(s) have been recorded.`
+  });
 }
 
 function getMockMetricsAnalysis(metrics = {}) {
@@ -768,6 +967,101 @@ app.get('/api/metrics', authenticateToken, requireAdmin, async (req, res) => {
     console.error('[METRICS ERROR]', error);
     res.status(500).json({
       error: 'Could not retrieve server metrics.'
+    });
+  }
+});
+
+app.get('/api/alerts', authenticateToken, requireAdmin, async (req, res) => {
+  res.json({
+    alerts: getAlertsSnapshot(),
+    activeCount: getActiveAlertCount()
+  });
+});
+
+app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async (req, res) => {
+  const alert = operationalAlerts.find((item) => item.id === req.params.id);
+
+  if (!alert) {
+    return res.status(404).json({
+      error: 'Alert not found.'
+    });
+  }
+
+  alert.status = 'Resolved';
+  alert.acknowledgedAt = new Date().toISOString();
+  alert.acknowledgedBy = req.user.username;
+  alert.resolvedAt = alert.acknowledgedAt;
+  acknowledgedAlertValues.set(alert.type, Number(alert.value || 0));
+
+  res.json({ saved: true, alert });
+});
+
+app.post('/api/analyze-alerts', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const alerts = Array.isArray(req.body?.alerts)
+      ? req.body.alerts
+      : getAlertsSnapshot().filter((alert) => alert.status === 'Active');
+    const metrics = req.body?.metrics || await getServerMetricsSnapshot();
+
+    if (isDemoMode) {
+      const activeAlerts = alerts.filter((alert) => alert.status === 'Active');
+      return res.json({
+        summary: activeAlerts.length
+          ? `${activeAlerts.length} active operational alert(s) need administrator review.`
+          : 'No active operational alerts are currently present.',
+        likelyCauses: activeAlerts.length
+          ? activeAlerts.map((alert) => `${alert.title}: current value ${alert.value}, threshold ${alert.threshold}.`)
+          : ['Current metrics are below configured alert thresholds.'],
+        recommendedFirstChecks: [
+          'Confirm current CPU, RAM, disk, latency, and failure counters on the dashboard.',
+          'Review backend logs for errors around the alert timestamp.',
+          'Check recent deploys or traffic spikes before taking action.'
+        ],
+        priorityActions: activeAlerts
+          .filter((alert) => alert.severity === 'Critical')
+          .map((alert) => `Address critical alert: ${alert.title}.`)
+          .concat(activeAlerts.some((alert) => alert.severity === 'Critical') ? [] : ['Continue monitoring and acknowledge reviewed alerts.'])
+      });
+    }
+
+    const prompt = `
+Explain these defensive operations alerts for an admin dashboard.
+
+Active alerts JSON:
+${JSON.stringify(alerts, null, 2)}
+
+Current metrics JSON:
+${JSON.stringify(metrics, null, 2)}
+
+Return ONLY valid JSON with this shape:
+{
+  "summary": "...",
+  "likelyCauses": ["..."],
+  "recommendedFirstChecks": ["..."],
+  "priorityActions": ["..."]
+}
+
+Rules:
+- Be concise and operational.
+- Do not suggest destructive commands.
+- Focus on first checks a junior administrator can safely verify.
+`;
+
+    const aiText = await generateAIResponse(prompt, '', true);
+    let cleanJson = aiText.trim();
+
+    if (cleanJson.startsWith('```json')) {
+      cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    res.json(sanitizeObject(JSON.parse(cleanJson)));
+  } catch (error) {
+    console.error('[API ERROR /api/analyze-alerts]', error);
+    res.status(500).json({
+      error: 'Alert analysis failed.',
+      details: error.message
     });
   }
 });

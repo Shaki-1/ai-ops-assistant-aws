@@ -797,7 +797,8 @@ body {
   grid-column: 1 / -1;
 }
 
-.ai-metrics-panel {
+.ai-metrics-panel,
+.alerts-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -806,23 +807,100 @@ body {
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.1);
 }
 
-.ai-metrics-header {
+.ai-metrics-header,
+.alerts-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
 }
 
-.ai-metrics-header h3 {
+.ai-metrics-header h3,
+.alerts-header h3 {
   color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
   margin-bottom: 0.35rem;
 }
 
-.ai-metrics-header p {
+.ai-metrics-header p,
+.alerts-header p {
   color: var(--text-secondary);
   font-size: 0.82rem;
+}
+
+.alerts-list {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.alert-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 0.95rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.alert-item.critical {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: var(--color-critical-bg);
+}
+
+.alert-item.warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: var(--color-warning-bg);
+}
+
+.alert-item.resolved {
+  opacity: 0.72;
+}
+
+.alert-item-header,
+.alert-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.alert-item-header {
+  margin-bottom: 0.55rem;
+}
+
+.alert-item-header strong {
+  color: var(--text-primary);
+}
+
+.alert-item p,
+.ai-alerts-results > p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.alert-meta {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  margin: 0.7rem 0;
+}
+
+.resolved-alerts {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.4rem;
+}
+
+.resolved-alerts h4 {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ai-alerts-results {
+  margin-top: 1rem;
 }
 
 .compact-loading {
@@ -2264,7 +2342,8 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .ai-metrics-header {
+  .ai-metrics-header,
+  .alerts-header {
     flex-direction: column;
   }
 

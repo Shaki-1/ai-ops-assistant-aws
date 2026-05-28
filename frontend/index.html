@@ -475,6 +475,40 @@
         </div>
       </div>
 
+      <section class="alerts-panel" aria-labelledby="alerts-title">
+        <div class="alerts-header">
+          <div>
+            <h3 id="alerts-title">Operational Alerts</h3>
+            <p>Live threshold alerts from CPU, RAM, disk, API latency, failed requests, and AI failures.</p>
+          </div>
+          <button id="ai-alerts-btn" class="btn-secondary">AI Explain Alerts</button>
+        </div>
+        <div class="alerts-list" id="alerts-list">
+          <p class="feedback-status">No active alerts</p>
+        </div>
+        <div class="loading-state hidden compact-loading" id="ai-alerts-loading">
+          <div class="spinner"></div>
+          <p>Explaining active alerts...</p>
+        </div>
+        <div class="ai-alerts-results hidden" id="ai-alerts-results">
+          <p id="ai-alerts-summary"></p>
+          <div class="ai-metrics-columns">
+            <div>
+              <h4>Likely Causes</h4>
+              <ul class="styled-list" id="ai-alerts-causes"></ul>
+            </div>
+            <div>
+              <h4>First Checks</h4>
+              <ul class="styled-list" id="ai-alerts-checks"></ul>
+            </div>
+            <div>
+              <h4>Priority Actions</h4>
+              <ul class="styled-list" id="ai-alerts-actions"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <div class="metrics-charts metrics-dashboard-grid" aria-label="Live resource usage charts">
         <div class="chart-card">
           <div class="chart-card-header">
