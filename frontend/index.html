@@ -516,6 +516,55 @@
 
         <p class="metrics-error hidden" id="metrics-error">Live metrics are temporarily unavailable.</p>
       </div>
+
+      <section class="ai-metrics-panel" aria-labelledby="ai-metrics-title">
+        <div class="ai-metrics-header">
+          <div>
+            <h3 id="ai-metrics-title">AI Metrics Insight</h3>
+            <p>AI reviews live CPU, RAM, disk, latency, and request health.</p>
+          </div>
+          <button id="ai-metrics-btn" class="btn-secondary">AI Analyze Metrics</button>
+        </div>
+
+        <div class="loading-state hidden compact-loading" id="ai-metrics-loading">
+          <div class="spinner"></div>
+          <p>Reviewing live metrics...</p>
+        </div>
+
+        <div class="ai-metrics-results hidden" id="ai-metrics-results">
+          <div class="ai-metrics-summary-row">
+            <span class="badge" id="ai-metrics-health">Healthy</span>
+            <span id="ai-metrics-confidence">Confidence: --</span>
+          </div>
+          <p id="ai-metrics-summary"></p>
+          <div class="ai-metrics-columns">
+            <div>
+              <h4>Risks</h4>
+              <ul class="styled-list" id="ai-metrics-risks"></ul>
+            </div>
+            <div>
+              <h4>Recommendations</h4>
+              <ul class="styled-list" id="ai-metrics-recommendations"></ul>
+            </div>
+            <div>
+              <h4>Priority Actions</h4>
+              <ul class="styled-list" id="ai-metrics-priority"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="dashboard-upgrades" aria-labelledby="dashboard-upgrades-title">
+        <h3 id="dashboard-upgrades-title">Suggested next upgrades</h3>
+        <div class="upgrade-chip-list">
+          <span>Alert thresholds</span>
+          <span>Incident severity statistics</span>
+          <span>Activity audit log</span>
+          <span>AI trend analysis</span>
+          <span>Export report</span>
+          <span>Persistent database</span>
+        </div>
+      </section>
     </div>
   </section>
 

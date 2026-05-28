@@ -56,6 +56,7 @@ loginForm.addEventListener('submit', async (event) => {
     restoreSavedView();
 
   } catch (error) {
+    loginError.textContent = 'Invalid username or password.';
     loginError.classList.remove('hidden');
   }
 });
@@ -87,16 +88,18 @@ systemctl status nginx --no-pager
 
 Output:
 nginx.service - The nginx HTTP and reverse proxy server
+   Quick check status: normal
    Active: active (running)
    Main PID: 1420 (nginx)
    Listen: 80 and 443
-   Recent logs: no critical errors reported.`,
+   Current observation: service is responding normally.`,
 
   backend: `Command:
 pm2 status ai-ops-backend
 
 Output:
 App name: ai-ops-backend
+Quick check status: normal
 Status: online
 Restarts: 0
 Port: 3000
@@ -108,7 +111,8 @@ df -h /
 Output:
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/xvda1       30G   18G   12G  61% /
-Disk usage is below the critical threshold.`,
+Quick check status: normal
+Disk usage is in a healthy operating range.`,
 
   memory: `Command:
 free -h
@@ -117,16 +121,18 @@ Output:
               total        used        free      shared  buff/cache   available
 Mem:           957M        412M        178M         12M        367M        404M
 Swap:            0B          0B          0B
-Memory pressure is moderate. No OOM event detected in this snapshot.`,
+Quick check status: normal
+Memory usage is in a healthy operating range.`,
 
   ssh: `Command:
 journalctl -u sshd --since "30 minutes ago" --no-pager
 
 Output:
-sshd[8045]: Invalid user admin from 192.168.1.150 port 49282
-sshd[8049]: Failed password for invalid user admin1 from 192.168.1.150 port 49286 ssh2
-sshd[8055]: Failed password for invalid user oracle from 192.168.1.150 port 49290 ssh2
-Multiple failed SSH authentication attempts detected.`
+ssh.service - OpenSSH server daemon
+   Quick check status: normal
+   Active: active (running)
+   Listening on port 22
+   Current observation: normal administrative access only.`
 };
 
 // Global States
@@ -137,9 +143,10 @@ let healthPollIntervalId = null;
 let metricsPollIntervalId = null;
 let clockIntervalId = null;
 let metricsCharts = null;
+let latestMetrics = null;
 
-const METRICS_REFRESH_MS = 5000;
-const HEALTH_REFRESH_MS = 10000;
+const METRICS_REFRESH_MS = 3000;
+const HEALTH_REFRESH_MS = 3000;
 const MAX_METRIC_POINTS = 20;
 
 // Element Selectors
@@ -153,6 +160,15 @@ const diskDetails = document.getElementById('disk-details');
 const lastPolledText = document.getElementById('last-polled-time');
 const headerClock = document.getElementById('header-clock');
 const metricsError = document.getElementById('metrics-error');
+const aiMetricsBtn = document.getElementById('ai-metrics-btn');
+const aiMetricsLoading = document.getElementById('ai-metrics-loading');
+const aiMetricsResults = document.getElementById('ai-metrics-results');
+const aiMetricsSummary = document.getElementById('ai-metrics-summary');
+const aiMetricsHealth = document.getElementById('ai-metrics-health');
+const aiMetricsRisks = document.getElementById('ai-metrics-risks');
+const aiMetricsRecommendations = document.getElementById('ai-metrics-recommendations');
+const aiMetricsPriority = document.getElementById('ai-metrics-priority');
+const aiMetricsConfidence = document.getElementById('ai-metrics-confidence');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
@@ -714,6 +730,18 @@ function clearMetricsError() {
   metricsError?.classList.add('hidden');
 }
 
+function handleExpiredSession() {
+  stopAuthenticatedSession();
+  localStorage.removeItem('authToken');
+  localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  if (loginError) {
+    loginError.textContent = 'Session expired. Please log in again.';
+    loginError.classList.remove('hidden');
+  }
+  loginScreen.classList.remove('hidden');
+  showAnalyzerView({ persist: false });
+}
+
 function appendMetricPoint(chart, label, value) {
   if (!chart || !Number.isFinite(value)) {
     return;
@@ -810,6 +838,47 @@ function updateStatusBadge(element, value) {
   element.className = `resource-status ${status.className}`;
 }
 
+function renderPlainList(element, items) {
+  if (!element) {
+    return;
+  }
+
+  const values = Array.isArray(items) && items.length > 0 ? items : ['No immediate item identified.'];
+  element.innerHTML = '';
+
+  values.forEach((item) => {
+    const li = document.createElement('li');
+    li.textContent = item;
+    element.appendChild(li);
+  });
+}
+
+function setAiMetricsHealthBadge(health) {
+  if (!aiMetricsHealth) {
+    return;
+  }
+
+  const normalizedHealth = ['Healthy', 'Warning', 'Critical'].includes(health) ? health : 'Warning';
+  const classMap = {
+    Healthy: 'badge-low',
+    Warning: 'badge-medium',
+    Critical: 'badge-critical'
+  };
+
+  aiMetricsHealth.textContent = normalizedHealth;
+  aiMetricsHealth.className = `badge ${classMap[normalizedHealth]}`;
+}
+
+function renderAiMetricsAnalysis(data) {
+  setAiMetricsHealthBadge(data.overallHealth);
+  setMetricText(aiMetricsConfidence, `Confidence: ${data.confidenceLevel || '--'}`);
+  setMetricText(aiMetricsSummary, data.summary || 'No summary returned.');
+  renderPlainList(aiMetricsRisks, data.risks);
+  renderPlainList(aiMetricsRecommendations, data.recommendations);
+  renderPlainList(aiMetricsPriority, data.priorityActions);
+  aiMetricsResults?.classList.remove('hidden');
+}
+
 function updateOperationalMetrics(metrics) {
   const requests = metrics.requests || {};
   const aiAnalyses = metrics.aiAnalyses || {};
@@ -851,7 +920,8 @@ async function pollMetrics() {
   const token = localStorage.getItem('authToken');
 
   if (!token) {
-    stopAuthenticatedSession();
+    showMetricsError('Session expired. Please log in again.');
+    handleExpiredSession();
     return;
   }
 
@@ -860,6 +930,7 @@ async function pollMetrics() {
   }
 
   if (!initializeMetricsCharts()) {
+    showMetricsError('Live charts could not load. Check the Chart.js script connection.');
     return;
   }
 
@@ -870,11 +941,18 @@ async function pollMetrics() {
       }
     });
 
+    if (response.status === 401 || response.status === 403) {
+      showMetricsError('Session expired. Please log in again.');
+      handleExpiredSession();
+      return;
+    }
+
     if (!response.ok) {
       throw new Error(`Metrics request failed with ${response.status}`);
     }
 
     const metrics = await response.json();
+    latestMetrics = metrics;
     const pointLabel = new Date(metrics.timestamp).toLocaleTimeString();
     const cpu = Number(metrics.cpuLoadPercent);
     const ram = Number(metrics.memoryUsagePercent);
@@ -895,7 +973,68 @@ async function pollMetrics() {
     clearMetricsError();
   } catch (error) {
     console.warn('[METRICS] Failed to refresh live metrics.', error.message);
-    showMetricsError();
+    showMetricsError('Live metrics are temporarily unavailable.');
+  }
+}
+
+async function analyzeMetricsWithAI() {
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    showMetricsError('Session expired. Please log in again.');
+    handleExpiredSession();
+    return;
+  }
+
+  aiMetricsLoading?.classList.remove('hidden');
+  aiMetricsResults?.classList.add('hidden');
+
+  if (aiMetricsBtn) {
+    aiMetricsBtn.disabled = true;
+  }
+
+  try {
+    if (!latestMetrics) {
+      await pollMetrics();
+    }
+
+    if (!latestMetrics) {
+      throw new Error('No live metrics payload is available yet.');
+    }
+
+    const response = await fetch(`${API_BASE_URL}/analyze-metrics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        metrics: latestMetrics
+      })
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      showMetricsError('Session expired. Please log in again.');
+      handleExpiredSession();
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Metrics AI analysis failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    renderAiMetricsAnalysis(data);
+    clearMetricsError();
+  } catch (error) {
+    console.warn('[AI METRICS] Failed to analyze metrics.', error.message);
+    showMetricsError('AI metrics analysis is temporarily unavailable.');
+  } finally {
+    aiMetricsLoading?.classList.add('hidden');
+
+    if (aiMetricsBtn) {
+      aiMetricsBtn.disabled = false;
+    }
   }
 }
 
@@ -1129,6 +1268,7 @@ function stopAuthenticatedSession() {
 
   destroyMetricsCharts();
   clearMetricsError();
+  latestMetrics = null;
 }
 
 startAuthenticatedSession();
@@ -1143,6 +1283,7 @@ appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
+aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 toggleHistoryBtn?.addEventListener('click', () => {
   const willShow = historyContent?.classList.contains('hidden');
   setHistoryVisible(Boolean(willShow));

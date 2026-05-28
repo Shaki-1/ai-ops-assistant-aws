@@ -303,12 +303,107 @@ function getBackendProcessStatus() {
   };
 }
 
+async function getServerMetricsSnapshot() {
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  const dynamicDisk = await getDiskUsage();
+  const processMemory = process.memoryUsage();
+  const averageLatencyMs = apiRuntimeMetrics.totalRequests > 0
+    ? apiRuntimeMetrics.totalLatencyMs / apiRuntimeMetrics.totalRequests
+    : 0;
+
+  return {
+    cpuLoadPercent: await getCpuLoadPercent(),
+    memoryUsagePercent: Number(((usedMem / totalMem) * 100).toFixed(1)),
+    diskUsagePercent: parseUsagePercent(dynamicDisk.percentUsed),
+    runtime: {
+      uptimeSeconds: Math.floor(process.uptime()),
+      nodeVersion: process.version,
+      platform: process.platform,
+      hostname: os.hostname(),
+      backendStatus: getBackendProcessStatus()
+    },
+    processMemory: {
+      rssBytes: processMemory.rss,
+      heapUsedBytes: processMemory.heapUsed,
+      heapTotalBytes: processMemory.heapTotal,
+      externalBytes: processMemory.external,
+      heapUsedPercent: processMemory.heapTotal
+        ? Number(((processMemory.heapUsed / processMemory.heapTotal) * 100).toFixed(1))
+        : 0
+    },
+    requests: {
+      total: apiRuntimeMetrics.totalRequests,
+      failed: apiRuntimeMetrics.failedRequests,
+      averageLatencyMs: Number(averageLatencyMs.toFixed(1))
+    },
+    aiAnalyses: {
+      successful: apiRuntimeMetrics.successfulAIAnalyses,
+      failed: apiRuntimeMetrics.failedAIAnalyses
+    },
+    timestamp: new Date().toISOString()
+  };
+}
+
+function getMockMetricsAnalysis(metrics = {}) {
+  const cpu = Number(metrics.cpuLoadPercent || 0);
+  const ram = Number(metrics.memoryUsagePercent || 0);
+  const disk = Number(metrics.diskUsagePercent || 0);
+  const latency = Number(metrics.requests?.averageLatencyMs || 0);
+  const failedRequests = Number(metrics.requests?.failed || 0);
+  const criticalSignals = [cpu, ram, disk].filter(value => value >= 90).length;
+  const warningSignals = [cpu, ram, disk].filter(value => value >= 75).length;
+  const overallHealth = criticalSignals > 0 || latency > 2000
+    ? 'Critical'
+    : (warningSignals > 0 || failedRequests > 0 ? 'Warning' : 'Healthy');
+
+  return {
+    summary: overallHealth === 'Healthy'
+      ? 'Live server metrics are within normal operating ranges.'
+      : 'Live server metrics show conditions that should be reviewed by an administrator.',
+    overallHealth,
+    risks: overallHealth === 'Healthy'
+      ? ['No immediate CPU, RAM, disk, latency, or request-health risk detected.']
+      : ['One or more resource or request-health indicators is elevated.'],
+    recommendations: [
+      'Continue monitoring CPU, RAM, disk, latency, and failed request trends.',
+      'Review recent application logs if failed requests or latency increase.'
+    ],
+    priorityActions: overallHealth === 'Healthy'
+      ? ['No urgent action required.']
+      : ['Inspect the highest resource consumer and recent backend errors first.'],
+    confidenceLevel: 'High'
+  };
+}
+
 // ==========================================
 // MOCK AI ENGINE (For demo out-of-the-box)
 // ==========================================
 
 function getMockAnalysis(logText = '') {
   const text = logText.toLowerCase();
+
+  if (
+    text.includes('quick check status: normal') ||
+    text.includes('active (running)') ||
+    text.includes('status: online') ||
+    text.includes('operating normally') ||
+    text.includes('healthy operating range')
+  ) {
+    return {
+      summary: "No issue detected in this quick check sample.",
+      severity: "Low",
+      rootCauses: [],
+      recommendedSteps: ["Continue routine monitoring and review live metrics for trend changes."],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "High",
+        missingInformation: "This quick check is a point-in-time sample, not a full historical audit.",
+        manualVerification: "Verify current service status on the server if symptoms appear."
+      }
+    };
+  }
   
   if (text.includes('502') || text.includes('bad gateway') || text.includes('upstream')) {
     return {
@@ -639,50 +734,70 @@ app.get('/api/status', async (req, res) => {
 
 app.get('/api/metrics', authenticateToken, async (req, res) => {
   try {
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
-    const dynamicDisk = await getDiskUsage();
-    const processMemory = process.memoryUsage();
-    const averageLatencyMs = apiRuntimeMetrics.totalRequests > 0
-      ? apiRuntimeMetrics.totalLatencyMs / apiRuntimeMetrics.totalRequests
-      : 0;
-
-    res.json({
-      cpuLoadPercent: await getCpuLoadPercent(),
-      memoryUsagePercent: Number(((usedMem / totalMem) * 100).toFixed(1)),
-      diskUsagePercent: parseUsagePercent(dynamicDisk.percentUsed),
-      runtime: {
-        uptimeSeconds: Math.floor(process.uptime()),
-        nodeVersion: process.version,
-        platform: process.platform,
-        hostname: os.hostname(),
-        backendStatus: getBackendProcessStatus()
-      },
-      processMemory: {
-        rssBytes: processMemory.rss,
-        heapUsedBytes: processMemory.heapUsed,
-        heapTotalBytes: processMemory.heapTotal,
-        externalBytes: processMemory.external,
-        heapUsedPercent: processMemory.heapTotal
-          ? Number(((processMemory.heapUsed / processMemory.heapTotal) * 100).toFixed(1))
-          : 0
-      },
-      requests: {
-        total: apiRuntimeMetrics.totalRequests,
-        failed: apiRuntimeMetrics.failedRequests,
-        averageLatencyMs: Number(averageLatencyMs.toFixed(1))
-      },
-      aiAnalyses: {
-        successful: apiRuntimeMetrics.successfulAIAnalyses,
-        failed: apiRuntimeMetrics.failedAIAnalyses
-      },
-      timestamp: new Date().toISOString()
-    });
+    res.json(await getServerMetricsSnapshot());
   } catch (error) {
     console.error('[METRICS ERROR]', error);
     res.status(500).json({
       error: 'Could not retrieve server metrics.'
+    });
+  }
+});
+
+app.post('/api/analyze-metrics', authenticateToken, async (req, res) => {
+  try {
+    const metrics = req.body?.metrics || await getServerMetricsSnapshot();
+
+    if (isDemoMode) {
+      return res.json(getMockMetricsAnalysis(metrics));
+    }
+
+    const prompt = `
+Analyze these live server metrics for an operations dashboard.
+
+Metrics JSON:
+${JSON.stringify(metrics, null, 2)}
+
+Return ONLY valid JSON with this shape:
+{
+  "summary": "...",
+  "overallHealth": "Healthy" | "Warning" | "Critical",
+  "risks": ["..."],
+  "recommendations": ["..."],
+  "priorityActions": ["..."],
+  "confidenceLevel": "Low" | "Medium" | "High"
+}
+
+Rules:
+- Treat CPU, RAM, or disk under 75% as healthy unless request failures or latency suggest otherwise.
+- Treat 75-89% as Warning.
+- Treat 90% or higher, severe latency, or repeated request failures as Critical.
+- Be concise and practical for a junior system administrator.
+`;
+
+    const aiText = await generateAIResponse(prompt, '', true);
+    let cleanJson = aiText.trim();
+
+    if (cleanJson.startsWith('```json')) {
+      cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson);
+    } catch (parseError) {
+      console.error('[PARSE ERROR] Failed to parse AI metrics analysis:', cleanJson);
+      parsed = getMockMetricsAnalysis(metrics);
+      parsed.confidenceLevel = 'Medium';
+    }
+
+    res.json(sanitizeObject(parsed));
+  } catch (error) {
+    console.error('[API ERROR /api/analyze-metrics]', error);
+    res.status(500).json({
+      error: 'Metrics analysis failed.',
+      details: error.message
     });
   }
 });
