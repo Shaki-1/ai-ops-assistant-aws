@@ -17,13 +17,19 @@ const logoutBtn = document.getElementById('logout-btn');
 const appHomeBtn = document.getElementById('app-home-btn');
 const dashboardViewBtn = document.getElementById('dashboard-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
+const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
+const simulationLabBtn = document.getElementById('simulation-lab-btn');
+const simulationBackBtn = document.getElementById('simulation-back-btn');
+const simulationActiveBadge = document.getElementById('simulation-active-badge');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const analyzerView = document.getElementById('analyzer-view');
 const metricsDashboardView = document.getElementById('metrics-dashboard-view');
+const simulationLabView = document.getElementById('simulation-lab-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
+const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation']);
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -65,6 +71,7 @@ logoutBtn.addEventListener('click', () => {
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
   localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  setSimulationMode(false);
   showAnalyzerView({ persist: false });
   loginScreen.classList.remove('hidden');
 });
@@ -135,6 +142,227 @@ ssh.service - OpenSSH server daemon
    Current observation: normal administrative access only.`
 };
 
+const SIMULATION_SCENARIOS = [
+  {
+    id: 'server-down',
+    title: 'Server Down',
+    level: 'Critical',
+    summary: 'Primary web service is unreachable and returning connection failures.',
+    metrics: { cpu: 12, ram: 48, disk: 62, latency: 0 },
+    log: `SIMULATED INCIDENT: Server Down
+curl http://localhost:3000/api/status
+Output: connection refused
+systemctl status ai-ops-backend
+Active: inactive (dead)
+Recent event: backend process stopped unexpectedly.`,
+    commentary: {
+      symptom: 'Users cannot reach the application API or receive connection refused responses.',
+      causes: ['Backend process stopped', 'Port binding changed', 'Service failed during restart'],
+      checks: ['Check PM2 process status', 'Inspect backend logs', 'Confirm port 3000 is listening'],
+      risk: 'Critical',
+      nextAction: 'Restore the backend process and verify the API health endpoint.'
+    }
+  },
+  {
+    id: 'high-cpu',
+    title: 'High CPU Load',
+    level: 'Warning',
+    summary: 'CPU load is elevated and API responses may become slower.',
+    metrics: { cpu: 91, ram: 58, disk: 63, latency: 740 },
+    log: `SIMULATED INCIDENT: High CPU Load
+top snapshot:
+node process using 91% CPU
+Average API latency: 740 ms
+Status: degraded but still responding.`,
+    commentary: {
+      symptom: 'Requests are still completing, but CPU saturation may delay responses.',
+      causes: ['Expensive AI request burst', 'Looping background job', 'Too many concurrent requests'],
+      checks: ['Inspect top CPU processes', 'Review recent traffic spikes', 'Check PM2 logs for loops'],
+      risk: 'Warning',
+      nextAction: 'Identify the highest CPU consumer and throttle or restart only if needed.'
+    }
+  },
+  {
+    id: 'memory-pressure',
+    title: 'Memory Pressure',
+    level: 'Warning',
+    summary: 'RAM usage is high and the server may become unstable if it continues rising.',
+    metrics: { cpu: 38, ram: 84, disk: 64, latency: 420 },
+    log: `SIMULATED INCIDENT: Memory Pressure
+free -h
+Mem: total 1.0G, used 860M, available 120M
+No OOM kill observed.
+Status: warning threshold reached.`,
+    commentary: {
+      symptom: 'Available memory is low, increasing risk of slowdowns or process restarts.',
+      causes: ['Large request payloads', 'Memory leak', 'Too many retained report objects'],
+      checks: ['Inspect process memory', 'Review recent request volume', 'Check for repeated restarts'],
+      risk: 'Warning',
+      nextAction: 'Watch process memory trend and restart the leaking process only after collecting logs.'
+    }
+  },
+  {
+    id: 'disk-full',
+    title: 'Disk Almost Full',
+    level: 'Critical',
+    summary: 'Disk usage is near capacity and writes may fail soon.',
+    metrics: { cpu: 22, ram: 55, disk: 94, latency: 300 },
+    log: `SIMULATED INCIDENT: Disk Almost Full
+df -h /
+Filesystem Size Used Avail Use% Mounted on
+/dev/xvda1 30G 28G 1.8G 94% /
+Large backup/history logs detected.`,
+    commentary: {
+      symptom: 'The root volume has very little free space remaining.',
+      causes: ['Unrotated logs', 'Large backup history', 'Temporary files accumulating'],
+      checks: ['Check largest directories', 'Review backup retention', 'Inspect log rotation'],
+      risk: 'Critical',
+      nextAction: 'Free safe log/archive space and confirm disk usage falls below alert threshold.'
+    }
+  },
+  {
+    id: 'nginx-502',
+    title: 'Nginx 502 Gateway Error',
+    level: 'Critical',
+    summary: 'Nginx is online but cannot reach the upstream backend.',
+    metrics: { cpu: 18, ram: 47, disk: 61, latency: 0 },
+    log: LOG_TEMPLATES['nginx-502'],
+    commentary: {
+      symptom: 'Browser traffic reaches Nginx, but API proxying fails with 502 errors.',
+      causes: ['Backend process down', 'Wrong upstream port', 'Nginx proxy route mismatch'],
+      checks: ['Check backend process status', 'Confirm localhost:3000 responds', 'Review Nginx error log'],
+      risk: 'Critical',
+      nextAction: 'Restore backend reachability, then reload Nginx only if config changed.'
+    }
+  },
+  {
+    id: 'backend-api-down',
+    title: 'Backend API Down',
+    level: 'Critical',
+    summary: 'Frontend loads, but protected API calls fail.',
+    metrics: { cpu: 14, ram: 45, disk: 60, latency: 0 },
+    log: `SIMULATED INCIDENT: Backend API Down
+GET /api/status -> no response
+GET /api/metrics -> 502 Bad Gateway
+pm2 status: ai-ops-backend errored
+Recent logs: server failed during startup.`,
+    commentary: {
+      symptom: 'The static site is available but API-dependent features fail.',
+      causes: ['Backend crash', 'Missing environment variable', 'Node dependency/startup issue'],
+      checks: ['Inspect PM2 logs', 'Check backend .env', 'Run syntax check before restart'],
+      risk: 'Critical',
+      nextAction: 'Fix the backend startup error and restart the PM2 process.'
+    }
+  },
+  {
+    id: 'ssh-bruteforce',
+    title: 'SSH Brute Force Attempt',
+    level: 'Warning',
+    summary: 'Repeated failed SSH login attempts are targeting public usernames.',
+    metrics: { cpu: 19, ram: 43, disk: 59, latency: 180 },
+    log: LOG_TEMPLATES['ssh-bruteforce'],
+    commentary: {
+      symptom: 'Authentication logs show repeated invalid usernames and failed attempts.',
+      causes: ['Public SSH exposure', 'Automated scanning', 'Weak lockout/rate-limit posture'],
+      checks: ['Review sshd auth logs', 'Confirm key-only access', 'Check firewall and fail2ban'],
+      risk: 'Warning',
+      nextAction: 'Confirm no accepted logins occurred and tighten SSH access controls.'
+    }
+  },
+  {
+    id: 'suspicious-login',
+    title: 'Suspicious Login Activity',
+    level: 'Warning',
+    summary: 'A login occurred from an unusual source after repeated attempts.',
+    metrics: { cpu: 20, ram: 46, disk: 60, latency: 210 },
+    log: `SIMULATED INCIDENT: Suspicious Login Activity
+sshd: Failed password for admin from 203.0.113.44
+sshd: Accepted publickey for ec2-user from 203.0.113.44
+last login source differs from normal administrator network.`,
+    commentary: {
+      symptom: 'A successful login appears near suspicious authentication activity.',
+      causes: ['Unrecognized admin source', 'Shared key exposure', 'Legitimate admin from new location'],
+      checks: ['Validate source IP with team', 'Review command history', 'Rotate credentials if unrecognized'],
+      risk: 'Warning',
+      nextAction: 'Confirm whether the login was authorized before making changes.'
+    }
+  },
+  {
+    id: 'possible-compromise',
+    title: 'Possible Compromise',
+    level: 'Critical',
+    summary: 'Multiple indicators suggest the host may need containment review.',
+    metrics: { cpu: 76, ram: 81, disk: 88, latency: 960 },
+    log: `SIMULATED INCIDENT: Possible Compromise
+Unexpected outbound connections observed.
+Unknown process running from /tmp.
+New cron entry detected for an unrecognized script.
+Several protected files changed recently.`,
+    commentary: {
+      symptom: 'Unexpected process, cron, and network indicators appear together.',
+      causes: ['Unauthorized access', 'Malicious script execution', 'Compromised credential'],
+      checks: ['Preserve logs', 'Identify unknown process owner', 'Review recent SSH and cron activity'],
+      risk: 'Critical',
+      nextAction: 'Contain and preserve evidence before deleting files or restarting services.'
+    }
+  },
+  {
+    id: 'dns-duckdns',
+    title: 'DNS/DuckDNS Failure',
+    level: 'Warning',
+    summary: 'Domain update or DNS resolution is failing intermittently.',
+    metrics: { cpu: 16, ram: 42, disk: 58, latency: 260 },
+    log: `SIMULATED INCIDENT: DNS/DuckDNS Failure
+duckdns update returned no confirmation.
+dig shaki-aiops.duckdns.org -> stale IP address
+Browser cannot resolve the expected hostname from some networks.`,
+    commentary: {
+      symptom: 'The server may be healthy, but the domain does not point to the current IP.',
+      causes: ['DuckDNS token issue', 'Dynamic IP changed', 'DNS cache delay'],
+      checks: ['Review duckdns.log', 'Compare public IP to DNS result', 'Retry DuckDNS update'],
+      risk: 'Warning',
+      nextAction: 'Update DuckDNS and verify public DNS resolves to the EC2 IP.'
+    }
+  },
+  {
+    id: 'cert-https',
+    title: 'Certificate/HTTPS Failure',
+    level: 'Warning',
+    summary: 'HTTPS is unavailable or certificate renewal is not valid.',
+    metrics: { cpu: 18, ram: 44, disk: 60, latency: 320 },
+    log: `SIMULATED INCIDENT: Certificate/HTTPS Failure
+curl https://domain -> certificate verify failed
+certbot certificates: no valid certificate for current hostname
+HTTP remains available on port 80.`,
+    commentary: {
+      symptom: 'Users can reach HTTP, but HTTPS trust or redirect behavior is broken.',
+      causes: ['Expired certificate', 'Hostname mismatch', 'Rate-limited Certbot request'],
+      checks: ['Inspect certificate path', 'Verify Nginx server_name', 'Check Certbot logs'],
+      risk: 'Warning',
+      nextAction: 'Keep HTTP available and repair certificate issuance without repeated retries.'
+    }
+  },
+  {
+    id: 'slow-api',
+    title: 'Slow API Latency',
+    level: 'Warning',
+    summary: 'API requests are succeeding but latency is above normal.',
+    metrics: { cpu: 64, ram: 67, disk: 63, latency: 1850 },
+    log: `SIMULATED INCIDENT: Slow API Latency
+GET /api/analyze-log -> 1850 ms
+GET /api/metrics -> 920 ms
+Error rate remains low.
+Latency spike started after several large AI requests.`,
+    commentary: {
+      symptom: 'Requests complete successfully but feel slow to users.',
+      causes: ['AI provider latency', 'Large payloads', 'CPU contention', 'Network delay'],
+      checks: ['Compare endpoint latency', 'Review request size', 'Check CPU and provider logs'],
+      risk: 'Warning',
+      nextAction: 'Find whether latency is local CPU, network, or AI-provider related.'
+    }
+  }
+];
+
 // Global States
 let activeAnalysisResult = null;
 let currentActiveLog = "";
@@ -144,6 +372,7 @@ let metricsPollIntervalId = null;
 let clockIntervalId = null;
 let metricsCharts = null;
 let latestMetrics = null;
+let selectedSimulationScenario = null;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -169,6 +398,21 @@ const aiMetricsRisks = document.getElementById('ai-metrics-risks');
 const aiMetricsRecommendations = document.getElementById('ai-metrics-recommendations');
 const aiMetricsPriority = document.getElementById('ai-metrics-priority');
 const aiMetricsConfidence = document.getElementById('ai-metrics-confidence');
+const simulationScenarios = document.getElementById('simulation-scenarios');
+const simulationAlertBadge = document.getElementById('simulation-alert-badge');
+const simulationSelectedTitle = document.getElementById('simulation-selected-title');
+const simulationSelectedSummary = document.getElementById('simulation-selected-summary');
+const simulationCpu = document.getElementById('simulation-cpu');
+const simulationRam = document.getElementById('simulation-ram');
+const simulationDisk = document.getElementById('simulation-disk');
+const simulationLatency = document.getElementById('simulation-latency');
+const simulationLogPreview = document.getElementById('simulation-log-preview');
+const simulationAnalyzeBtn = document.getElementById('simulation-analyze-btn');
+const simulationSymptom = document.getElementById('simulation-symptom');
+const simulationCauses = document.getElementById('simulation-causes');
+const simulationChecks = document.getElementById('simulation-checks');
+const simulationRisk = document.getElementById('simulation-risk');
+const simulationNextAction = document.getElementById('simulation-next-action');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
@@ -879,6 +1123,89 @@ function renderAiMetricsAnalysis(data) {
   aiMetricsResults?.classList.remove('hidden');
 }
 
+function getSimulationBadgeClass(level) {
+  if (level === 'Critical') return 'badge-critical';
+  if (level === 'Warning') return 'badge-medium';
+  return 'badge-low';
+}
+
+function renderSimulationScenarios() {
+  if (!simulationScenarios) {
+    return;
+  }
+
+  simulationScenarios.innerHTML = '';
+
+  SIMULATION_SCENARIOS.forEach((scenario) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'simulation-scenario-card';
+    button.dataset.scenarioId = scenario.id;
+    button.innerHTML = `
+      <span class="badge ${getSimulationBadgeClass(scenario.level)}">${scenario.level}</span>
+      <strong>${scenario.title}</strong>
+      <span>${scenario.summary}</span>
+    `;
+    button.addEventListener('click', () => selectSimulationScenario(scenario.id));
+    simulationScenarios.appendChild(button);
+  });
+}
+
+function selectSimulationScenario(scenarioId) {
+  const scenario = SIMULATION_SCENARIOS.find((item) => item.id === scenarioId);
+
+  if (!scenario) {
+    return;
+  }
+
+  selectedSimulationScenario = scenario;
+
+  document.querySelectorAll('.simulation-scenario-card').forEach((card) => {
+    card.classList.toggle('active', card.dataset.scenarioId === scenarioId);
+  });
+
+  if (simulationAlertBadge) {
+    simulationAlertBadge.textContent = scenario.level;
+    simulationAlertBadge.className = `badge ${getSimulationBadgeClass(scenario.level)}`;
+  }
+
+  setMetricText(simulationSelectedTitle, scenario.title);
+  setMetricText(simulationSelectedSummary, scenario.summary);
+  setMetricText(simulationCpu, `${scenario.metrics.cpu}%`);
+  setMetricText(simulationRam, `${scenario.metrics.ram}%`);
+  setMetricText(simulationDisk, `${scenario.metrics.disk}%`);
+  setMetricText(simulationLatency, `${scenario.metrics.latency} ms`);
+  setMetricText(simulationLogPreview, scenario.log);
+  setMetricText(simulationSymptom, scenario.commentary.symptom);
+  renderPlainList(simulationCauses, scenario.commentary.causes);
+  renderPlainList(simulationChecks, scenario.commentary.checks);
+  setMetricText(simulationRisk, scenario.commentary.risk);
+  setMetricText(simulationNextAction, scenario.commentary.nextAction);
+
+  if (simulationAnalyzeBtn) {
+    simulationAnalyzeBtn.disabled = false;
+  }
+}
+
+async function analyzeSelectedSimulationScenario() {
+  if (!selectedSimulationScenario) {
+    return;
+  }
+
+  const scenario = selectedSimulationScenario;
+  logInput.value = `[SIMULATION MODE ACTIVE]
+Simulated incident: ${scenario.title}
+Alert level: ${scenario.level}
+Simulated CPU: ${scenario.metrics.cpu}%
+Simulated RAM: ${scenario.metrics.ram}%
+Simulated Disk: ${scenario.metrics.disk}%
+Simulated API latency: ${scenario.metrics.latency} ms
+
+${scenario.log}`;
+
+  await analyzeCurrentInput();
+}
+
 function updateOperationalMetrics(metrics) {
   const requests = metrics.requests || {};
   const aiAnalyses = metrics.aiAnalyses || {};
@@ -1146,6 +1473,26 @@ function getSavedView() {
   return VALID_VIEWS.has(savedView) ? savedView : DEFAULT_VIEW;
 }
 
+function isSimulationModeEnabled() {
+  return localStorage.getItem(SIMULATION_STORAGE_KEY) === 'true';
+}
+
+function setSimulationMode(isEnabled) {
+  localStorage.setItem(SIMULATION_STORAGE_KEY, String(Boolean(isEnabled)));
+
+  simulationToggleBtn?.setAttribute('aria-pressed', String(Boolean(isEnabled)));
+  if (simulationToggleBtn) {
+    simulationToggleBtn.textContent = isEnabled ? 'Simulation: ON' : 'Simulation: OFF';
+  }
+
+  simulationLabBtn?.classList.toggle('hidden', !isEnabled);
+  simulationActiveBadge?.classList.toggle('hidden', !isEnabled);
+
+  if (!isEnabled && getSavedView() === 'simulation') {
+    showAnalyzerView();
+  }
+}
+
 function restoreSavedView() {
   if (!localStorage.getItem('authToken')) {
     return;
@@ -1153,6 +1500,8 @@ function restoreSavedView() {
 
   if (getSavedView() === 'dashboard') {
     showMetricsDashboard({ persist: false });
+  } else if (getSavedView() === 'simulation' && isSimulationModeEnabled()) {
+    showSimulationLab({ persist: false });
   } else {
     showAnalyzerView({ persist: false });
   }
@@ -1166,6 +1515,7 @@ function showMetricsDashboard(options = {}) {
   const { persist = true } = options;
 
   analyzerView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
 
@@ -1186,11 +1536,29 @@ function showAnalyzerView(options = {}) {
   const { persist = true } = options;
 
   metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
   if (persist) {
     localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  }
+}
+
+function showSimulationLab(options = {}) {
+  if (!localStorage.getItem('authToken') || !isSimulationModeEnabled()) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'simulation');
   }
 }
 
@@ -1272,6 +1640,7 @@ function stopAuthenticatedSession() {
 }
 
 startAuthenticatedSession();
+setSimulationMode(isSimulationModeEnabled());
 restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
 
@@ -1282,8 +1651,12 @@ applyTheme(localStorage.getItem('themePreference') || 'dark');
 appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
+simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
+simulationLabBtn?.addEventListener('click', showSimulationLab);
+simulationBackBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
+simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 toggleHistoryBtn?.addEventListener('click', () => {
   const willShow = historyContent?.classList.contains('hidden');
   setHistoryVisible(Boolean(willShow));
@@ -1294,6 +1667,7 @@ toggleHistoryBtn?.addEventListener('click', () => {
 });
 
 setHistoryVisible(false);
+renderSimulationScenarios();
 
 // Demo Selector loader
 demoSelect.addEventListener('change', (e) => {

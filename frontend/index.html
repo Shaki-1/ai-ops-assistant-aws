@@ -56,6 +56,9 @@
       <div class="system-time">
         <span id="header-clock">--:--:--</span>
       </div>
+      <button id="simulation-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Simulation: OFF</button>
+      <button id="simulation-lab-btn" class="btn-secondary header-action-btn hidden">Simulation Lab</button>
+      <span id="simulation-active-badge" class="simulation-active-badge hidden">Simulation Mode Active</span>
       <button id="theme-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Light Mode</button>
       <button id="logout-btn" class="btn-secondary header-action-btn">Logout</button>
     </div>
@@ -565,6 +568,82 @@
           <span>Persistent database</span>
         </div>
       </section>
+    </div>
+  </section>
+
+  <section class="dashboard-view simulation-lab-view hidden" id="simulation-lab-view" aria-labelledby="simulation-lab-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Training Mode</p>
+          <h2 id="simulation-lab-title">Simulation Lab</h2>
+          <p>Practice diagnosing realistic server incidents with simulated logs, metrics, and alerts. Real server state is not changed.</p>
+        </div>
+        <button id="simulation-back-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <div class="simulation-warning">
+        <span class="badge badge-medium">Simulated Incident</span>
+        <p>Scenario data is isolated from live metrics and does not execute commands or modify infrastructure.</p>
+      </div>
+
+      <div class="simulation-layout">
+        <div class="simulation-scenarios" id="simulation-scenarios" aria-label="Simulation scenarios"></div>
+
+        <aside class="simulation-detail-panel" aria-live="polite">
+          <div class="simulation-state-card">
+            <div class="simulation-state-header">
+              <span class="badge" id="simulation-alert-badge">Info</span>
+              <h3 id="simulation-selected-title">Select a scenario</h3>
+            </div>
+            <p id="simulation-selected-summary">Choose a simulated incident to review its metrics, logs, and AI commentary.</p>
+            <div class="simulation-metrics-grid">
+              <div>
+                <span>Simulated CPU</span>
+                <strong id="simulation-cpu">--%</strong>
+              </div>
+              <div>
+                <span>Simulated RAM</span>
+                <strong id="simulation-ram">--%</strong>
+              </div>
+              <div>
+                <span>Simulated Disk</span>
+                <strong id="simulation-disk">--%</strong>
+              </div>
+              <div>
+                <span>Simulated Latency</span>
+                <strong id="simulation-latency">-- ms</strong>
+              </div>
+            </div>
+            <pre class="simulation-log-preview" id="simulation-log-preview">No simulated logs selected.</pre>
+            <button id="simulation-analyze-btn" class="btn-primary" disabled>Analyze Scenario</button>
+          </div>
+
+          <div class="simulation-commentary">
+            <h3>AI Scenario Commentary</h3>
+            <div class="commentary-block">
+              <strong>Symptom</strong>
+              <p id="simulation-symptom">--</p>
+            </div>
+            <div class="commentary-block">
+              <strong>Possible Causes</strong>
+              <ul class="styled-list" id="simulation-causes"></ul>
+            </div>
+            <div class="commentary-block">
+              <strong>Suggested First Checks</strong>
+              <ul class="styled-list" id="simulation-checks"></ul>
+            </div>
+            <div class="commentary-block">
+              <strong>Risk Level</strong>
+              <p id="simulation-risk">--</p>
+            </div>
+            <div class="commentary-block">
+              <strong>Recommended Next Action</strong>
+              <p id="simulation-next-action">--</p>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   </section>
 

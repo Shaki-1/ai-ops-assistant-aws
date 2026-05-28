@@ -237,6 +237,19 @@ body {
   letter-spacing: 0.02em;
 }
 
+.simulation-active-badge {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.74rem;
+  font-weight: 700;
+  min-height: var(--control-height);
+  padding: 0.45rem 0.7rem;
+  display: flex;
+  align-items: center;
+}
+
 .system-time {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -788,6 +801,171 @@ body {
   border-radius: var(--border-radius-sm);
   font-size: 0.78rem;
   padding: 0.45rem 0.65rem;
+}
+
+.simulation-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-radius: var(--border-radius-md);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.simulation-warning p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.simulation-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.25fr);
+  gap: 1.25rem;
+}
+
+.simulation-scenarios {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.simulation-scenario-card {
+  min-height: 132px;
+  padding: 1rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+  flex-direction: column;
+  white-space: normal;
+}
+
+.simulation-scenario-card:hover,
+.simulation-scenario-card.active {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: var(--bg-card-hover);
+}
+
+.simulation-scenario-card strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.simulation-scenario-card span:last-child {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.simulation-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.simulation-state-card,
+.simulation-commentary {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  padding: 1.25rem;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.1);
+}
+
+.simulation-state-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.simulation-state-header h3,
+.simulation-commentary h3 {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.simulation-state-card > p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  margin-bottom: 1rem;
+}
+
+.simulation-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.simulation-metrics-grid div {
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 0.75rem;
+}
+
+.simulation-metrics-grid span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+}
+
+.simulation-metrics-grid strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 1rem;
+}
+
+.simulation-log-preview {
+  max-height: 240px;
+  overflow: auto;
+  background: #060913;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: #cbd5e1;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  padding: 1rem;
+  white-space: pre-wrap;
+  margin-bottom: 1rem;
+}
+
+:root[data-theme="light"] .simulation-log-preview {
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.commentary-block {
+  margin-top: 1rem;
+}
+
+.commentary-block strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.35rem;
+}
+
+.commentary-block p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .health-footer {
@@ -1673,6 +1851,18 @@ button {
   .ai-metrics-columns {
     grid-template-columns: 1fr;
   }
+
+  .simulation-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-scenarios {
+    grid-template-columns: 1fr;
+  }
+
+  .simulation-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   
   .app-header {
     flex-direction: column;
@@ -1931,8 +2121,13 @@ body::before {
     min-width: 0;
   }
 
+  .simulation-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
   .status-indicator,
   .system-time,
+  .simulation-active-badge,
   .header-action-btn,
   .header-nav-btn,
   #logout-btn {
