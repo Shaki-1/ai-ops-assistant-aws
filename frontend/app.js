@@ -400,6 +400,9 @@ let latestSecurityStatus = null;
 let inactivityTimeoutId = null;
 let sessionHistory = [];
 let inboxPollIntervalId = null;
+let inboxNotificationPollIntervalId = null;
+let activeAnalysisAbortController = null;
+let analysisRequestId = 0;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -407,6 +410,8 @@ const MAX_METRIC_POINTS = 20;
 const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const ACTIVITY_EVENTS = ['mousemove', 'click', 'keypress', 'scroll', 'touchstart'];
 const INBOX_REFRESH_MS = 10000;
+const INBOX_NOTIFICATION_REFRESH_MS = 15 * 60 * 1000;
+const TICKET_SEEN_KEY = 'aiOpsTicketLastSeen';
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -1931,6 +1936,11 @@ function showAnalyzerView(options = {}) {
   }
 }
 
+function returnHomeToAnalyzer() {
+  cancelActiveAnalysis();
+  showAnalyzerView();
+}
+
 function showSimulationLab(options = {}) {
   if (!localStorage.getItem('authToken') || !isSimulationModeEnabled()) {
     return;
@@ -2055,7 +2065,29 @@ function setHistoryVisible(isVisible) {
   }
 }
 
+function resetAnalysisLoadingState() {
+  analysisLoadingState?.classList.add('hidden');
+  analysisEmptyState?.classList.toggle('hidden', Boolean(activeAnalysisResult));
+  analysisResultsPanel?.classList.toggle('hidden', !activeAnalysisResult);
+
+  if (analyzeBtn) {
+    analyzeBtn.disabled = false;
+  }
+}
+
+function cancelActiveAnalysis() {
+  analysisRequestId += 1;
+
+  if (activeAnalysisAbortController) {
+    activeAnalysisAbortController.abort();
+    activeAnalysisAbortController = null;
+  }
+
+  resetAnalysisLoadingState();
+}
+
 function performSessionLogout() {
+  cancelActiveAnalysis();
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
   localStorage.removeItem('userRole');
@@ -2133,7 +2165,7 @@ function applyRoleAccess() {
   }
 
   if (hasToken) {
-    loadTickets();
+    refreshInboxNotificationStatus();
   }
 }
 
@@ -2164,6 +2196,23 @@ function stopInboxPolling() {
   }
 }
 
+function startInboxNotificationPolling() {
+  if (!localStorage.getItem('authToken') || inboxNotificationPollIntervalId) {
+    return;
+  }
+
+  refreshInboxNotificationStatus();
+  inboxNotificationPollIntervalId = setInterval(refreshInboxNotificationStatus, INBOX_NOTIFICATION_REFRESH_MS);
+}
+
+function stopInboxNotificationPolling() {
+  if (inboxNotificationPollIntervalId) {
+    clearInterval(inboxNotificationPollIntervalId);
+    inboxNotificationPollIntervalId = null;
+  }
+  updateInboxNotificationBadge(0);
+}
+
 function startAuthenticatedSession() {
   if (!localStorage.getItem('authToken')) {
     return;
@@ -2185,10 +2234,13 @@ function startAuthenticatedSession() {
     pollMetrics();
     metricsPollIntervalId = setInterval(pollMetrics, METRICS_REFRESH_MS);
   }
+
+  startInboxNotificationPolling();
 }
 
 function stopAuthenticatedSession() {
   stopInboxPolling();
+  stopInboxNotificationPolling();
 
   if (inactivityTimeoutId) {
     clearTimeout(inactivityTimeoutId);
@@ -2225,7 +2277,7 @@ applyTheme(localStorage.getItem('themePreference') || 'dark');
 // INTERACTIVE EVENT LISTENERS & LOGIC
 // ==========================================
 
-appHomeBtn?.addEventListener('click', showAnalyzerView);
+appHomeBtn?.addEventListener('click', returnHomeToAnalyzer);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 securityCenterBtn?.addEventListener('click', showSecurityCenter);
 inboxViewBtn?.addEventListener('click', showInboxView);
@@ -2310,6 +2362,15 @@ async function analyzeCurrentInput() {
   }
 
   currentActiveLog = rawLogText;
+  const requestId = analysisRequestId + 1;
+  analysisRequestId = requestId;
+
+  if (activeAnalysisAbortController) {
+    activeAnalysisAbortController.abort();
+  }
+
+  activeAnalysisAbortController = new AbortController();
+  analyzeBtn.disabled = true;
 
   // Toggle Loading states on Dashboard Panel
   analysisEmptyState.classList.add('hidden');
@@ -2326,10 +2387,15 @@ async function analyzeCurrentInput() {
     // Zero-downtime Local Simulation Fallback
     console.log('[LOCAL RUN] Server offline. Simulating Log Analysis locally.');
     await new Promise(resolve => setTimeout(resolve, 800)); // smooth experience
+    if (requestId !== analysisRequestId) {
+      return;
+    }
     const mockData = getMockAnalysis(rawLogText);
     activeAnalysisResult = mockData;
     renderAnalysisData(mockData);
     saveHistoryEntry(rawLogText, mockData);
+    activeAnalysisAbortController = null;
+    analyzeBtn.disabled = false;
     return;
   }
 
@@ -2342,7 +2408,8 @@ async function analyzeCurrentInput() {
       },
       body: JSON.stringify({
         logText: rawLogText
-      })
+      }),
+      signal: activeAnalysisAbortController.signal
     });
 
     if (!response.ok) {
@@ -2350,6 +2417,9 @@ async function analyzeCurrentInput() {
     }
 
     const data = await response.json();
+    if (requestId !== analysisRequestId) {
+      return;
+    }
     activeAnalysisResult = data;
 
     // Compile and render the analysis result cards
@@ -2357,14 +2427,26 @@ async function analyzeCurrentInput() {
     saveHistoryEntry(rawLogText, data);
 
   } catch (error) {
+    if (error.name === 'AbortError') {
+      return;
+    }
+
     console.warn('[API FETCH FAILED] Direct backend unreachable. Triggering automatic local simulation.', error);
     
     // Auto-fallback in case poller didn't catch the offline state yet
     isOfflineMode = true;
     await new Promise(resolve => setTimeout(resolve, 800));
+    if (requestId !== analysisRequestId) {
+      return;
+    }
     const mockData = getMockAnalysis(rawLogText);
     activeAnalysisResult = mockData;
     renderAnalysisData(mockData);
+  } finally {
+    if (requestId === analysisRequestId) {
+      activeAnalysisAbortController = null;
+      resetAnalysisLoadingState();
+    }
   }
 }
 
@@ -2720,7 +2802,25 @@ function writeGovernanceAcknowledgements(entries) {
 }
 
 function getCurrentUsername() {
-  return localStorage.getItem('username') || 'unknown';
+  const storedUsername = localStorage.getItem('username');
+
+  if (storedUsername) {
+    return storedUsername;
+  }
+
+  try {
+    const payload = localStorage.getItem('authToken')?.split('.')[1];
+    if (!payload) {
+      return 'unknown';
+    }
+
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=');
+    const decoded = JSON.parse(atob(paddedPayload));
+    return decoded.username || 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function renderGovernanceHistory() {
@@ -2783,6 +2883,145 @@ function exportGovernanceHistory() {
   }
 }
 
+function getTicketSeenMap() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TICKET_SEEN_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function getTicketSeenId() {
+  return `${getCurrentUsername()}:${getCurrentRole()}`;
+}
+
+function getLastTicketSeenTime() {
+  return getTicketSeenMap()[getTicketSeenId()] || '';
+}
+
+function markInboxSeen(tickets = []) {
+  const seenMap = getTicketSeenMap();
+  const newestRelevantTime = tickets.reduce((latest, ticket) => {
+    const relevantTime = getTicketRelevantUpdateTime(ticket);
+    return relevantTime > latest ? relevantTime : latest;
+  }, new Date().toISOString());
+
+  seenMap[getTicketSeenId()] = newestRelevantTime;
+  localStorage.setItem(TICKET_SEEN_KEY, JSON.stringify(seenMap));
+  updateInboxNotificationBadge(0);
+}
+
+function getTicketRelevantUpdateTime(ticket) {
+  const replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+  const timestamps = [ticket.updatedAt, ticket.time, ...replies.map((reply) => reply.time)]
+    .filter(Boolean)
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite);
+
+  if (!timestamps.length) {
+    return '';
+  }
+
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isUnreadTicketUpdate(ticket, lastSeenTime) {
+  const lastSeenMs = lastSeenTime ? new Date(lastSeenTime).getTime() : 0;
+  const ticketTimeMs = ticket.time ? new Date(ticket.time).getTime() : 0;
+  const replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+  const currentUsername = getCurrentUsername();
+  const isAdmin = isAdminUser();
+
+  if (isAdmin) {
+    const newUserTicket = ticket.from !== currentUsername && ticketTimeMs > lastSeenMs;
+    const newUserReply = replies.some((reply) => reply.from !== currentUsername && new Date(reply.time).getTime() > lastSeenMs);
+    return newUserTicket || newUserReply;
+  }
+
+  const updatedAtMs = ticket.updatedAt ? new Date(ticket.updatedAt).getTime() : 0;
+  const newAdminTicket = ticket.from !== currentUsername && ticketTimeMs > lastSeenMs;
+  const newAdminReply = replies.some((reply) => reply.from !== currentUsername && new Date(reply.time).getTime() > lastSeenMs);
+  const adminStatusUpdate = ticket.from === currentUsername && updatedAtMs > lastSeenMs;
+  return newAdminTicket || newAdminReply || adminStatusUpdate;
+}
+
+function getUnreadTicketCount(tickets = []) {
+  const lastSeenTime = getLastTicketSeenTime();
+  return tickets.filter((ticket) => isUnreadTicketUpdate(ticket, lastSeenTime)).length;
+}
+
+function updateInboxNotificationBadge(count) {
+  if (!inboxViewBtn) {
+    return;
+  }
+
+  const numericCount = Math.max(0, Number(count) || 0);
+  let badge = inboxViewBtn.querySelector('.inbox-notification-badge');
+
+  if (!numericCount) {
+    badge?.remove();
+    inboxViewBtn.classList.remove('has-notification');
+    return;
+  }
+
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'inbox-notification-badge';
+    inboxViewBtn.appendChild(badge);
+  }
+
+  badge.textContent = numericCount > 9 ? '9+' : String(numericCount);
+  inboxViewBtn.classList.add('has-notification');
+}
+
+async function fetchTicketsForCurrentRole() {
+  const endpoint = isAdminUser() ? '/tickets/admin' : '/tickets/my';
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Tickets failed with ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function refreshInboxNotificationStatus() {
+  if (!localStorage.getItem('authToken')) {
+    updateInboxNotificationBadge(0);
+    return;
+  }
+
+  try {
+    const tickets = await fetchTicketsForCurrentRole();
+    updateInboxNotificationBadge(getUnreadTicketCount(tickets));
+  } catch {
+    updateInboxNotificationBadge(0);
+  }
+}
+
+function getTicketStatusBadgeClass(status) {
+  const normalizedStatus = String(status || 'New').toLowerCase();
+
+  if (normalizedStatus === 'new') {
+    return 'badge-status-new';
+  }
+
+  if (normalizedStatus === 'in progress') {
+    return 'badge-status-progress';
+  }
+
+  if (normalizedStatus === 'resolved') {
+    return 'badge-status-resolved';
+  }
+
+  return 'badge-status-default';
+}
+
 function renderTickets(tickets = []) {
   if (!ticketList) {
     return;
@@ -2818,7 +3057,7 @@ function renderTickets(tickets = []) {
 
     item.innerHTML = `
       <div class="ticket-item-header">
-        <span class="badge badge-medium">${escapeHtml(ticket.status || 'New')}</span>
+        <span class="badge ${getTicketStatusBadgeClass(ticket.status)}">${escapeHtml(ticket.status || 'New')}</span>
         <strong>${escapeHtml(ticket.type || 'feedback')}</strong>
         <span>${escapeHtml(ticket.from || 'user')} · ${new Date(ticket.time).toLocaleString()}</span>
         ${deleteControl}
@@ -2837,18 +3076,14 @@ async function loadTickets() {
   }
 
   try {
-    const endpoint = isAdminUser() ? '/tickets/admin' : '/tickets/my';
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      }
-    });
+    const tickets = await fetchTicketsForCurrentRole();
+    renderTickets(tickets);
 
-    if (!response.ok) {
-      throw new Error(`Tickets failed with ${response.status}`);
+    if (!inboxView?.classList.contains('hidden')) {
+      markInboxSeen(tickets);
+    } else {
+      updateInboxNotificationBadge(getUnreadTicketCount(tickets));
     }
-
-    renderTickets(await response.json());
   } catch (error) {
     if (ticketList) {
       ticketList.innerHTML = '<p class="feedback-status">Could not load messages right now.</p>';
@@ -2893,7 +3128,8 @@ async function submitTicketToAdmin() {
       ticketStatus.textContent = isAdminUser() ? 'User-facing ticket created.' : 'Submitted to admin.';
       ticketStatus.classList.remove('hidden');
     }
-    loadTickets();
+    await loadTickets();
+    refreshInboxNotificationStatus();
   } catch (error) {
     if (ticketStatus) {
       ticketStatus.textContent = 'Could not submit message right now.';
@@ -2915,7 +3151,8 @@ async function updateTicketStatus(ticketId, status) {
     },
     body: JSON.stringify({ status })
   });
-  loadTickets();
+  await loadTickets();
+  refreshInboxNotificationStatus();
 }
 
 async function replyToTicket(ticketId) {
@@ -2934,7 +3171,8 @@ async function replyToTicket(ticketId) {
     },
     body: JSON.stringify({ message })
   });
-  loadTickets();
+  await loadTickets();
+  refreshInboxNotificationStatus();
 }
 
 async function deleteTicket(ticketId) {
@@ -2956,7 +3194,8 @@ async function deleteTicket(ticketId) {
       throw new Error(`Delete failed with ${response.status}`);
     }
 
-    loadTickets();
+    await loadTickets();
+    refreshInboxNotificationStatus();
   } catch (error) {
     if (ticketStatus) {
       ticketStatus.textContent = 'Could not delete ticket right now.';

@@ -190,6 +190,29 @@ body {
   color: var(--color-primary);
 }
 
+.header-nav-btn.has-notification {
+  position: relative;
+}
+
+.inbox-notification-badge {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-critical);
+  color: #fff;
+  border: 2px solid var(--bg-card);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .header-action-btn {
   flex-shrink: 0;
 }
@@ -579,6 +602,10 @@ body {
 .badge-low { background-color: var(--color-success-bg); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.3); }
 .badge-medium { background-color: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.3); }
 .badge-high { background-color: rgba(239, 68, 68, 0.08); color: var(--color-critical); border: 1px solid rgba(239, 68, 68, 0.3); }
+.badge-status-new { background-color: var(--color-success-bg); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.34); }
+.badge-status-progress { background-color: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.34); }
+.badge-status-resolved { background-color: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.32); }
+.badge-status-default { background-color: rgba(148, 163, 184, 0.12); color: var(--text-secondary); border: 1px solid rgba(148, 163, 184, 0.28); }
 .badge-critical { 
   background-color: var(--color-critical); 
   color: white; 
