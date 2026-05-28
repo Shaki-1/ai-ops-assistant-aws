@@ -12,6 +12,8 @@ resource "aws_instance" "ai_ops_assistant" {
     duckdns_token     = var.duckdns_token
     admin_username    = var.admin_username
     admin_password    = var.admin_password
+    user_username     = var.user_username
+    user_password     = var.user_password
     auth_token_secret = var.auth_token_secret
   })
 

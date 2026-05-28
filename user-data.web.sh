@@ -15,6 +15,7 @@ cd /home/ec2-user/ai-ops-assistant-aws/backend
 npm install
 
 ADMIN_PASSWORD_HASH=$(node -e "import('bcryptjs').then(async b=>console.log(await b.default.hash('${admin_password}', 10)))")
+USER_PASSWORD_HASH=$(node -e "import('bcryptjs').then(async b=>console.log(await b.default.hash('${user_password}', 10)))")
 
 cat > .env <<'ENVEOF'
 AI_PROVIDER=groq
@@ -23,10 +24,12 @@ GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
 
 ADMIN_USERNAME=${admin_username}
+USER_USERNAME=${user_username}
 AUTH_TOKEN_SECRET=${auth_token_secret}
 ENVEOF
 
 printf '%s\n' "ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH" >> .env
+printf '%s\n' "USER_PASSWORD_HASH=$USER_PASSWORD_HASH" >> .env
 
 chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws
 

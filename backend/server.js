@@ -25,6 +25,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
+const USER_USERNAME = process.env.USER_USERNAME || 'user';
+const USER_PASSWORD_HASH = process.env.USER_PASSWORD_HASH || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
 
 const apiRuntimeMetrics = {
@@ -660,6 +662,27 @@ function authenticateToken(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({
+      error: 'Admin access required.'
+    });
+  }
+
+  next();
+}
+
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({
+        error: 'Insufficient role permissions.'
+      });
+    }
+
+    next();
+  };
+}
 
 // ==========================================
 // ENDPOINTS
@@ -679,23 +702,29 @@ app.post('/api/login', async (req, res) => {
     });
   }
 
-  if (!ADMIN_PASSWORD_HASH) {
+  if (!ADMIN_PASSWORD_HASH || !USER_PASSWORD_HASH) {
     return res.status(500).json({
       error: 'Authentication is not configured on the server.'
     });
   }
 
-  const usernameMatches = username === ADMIN_USERNAME;
-  const passwordMatches = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+  const users = [
+    { username: ADMIN_USERNAME, passwordHash: ADMIN_PASSWORD_HASH, role: 'admin' },
+    { username: USER_USERNAME, passwordHash: USER_PASSWORD_HASH, role: 'user' }
+  ];
+  const matchedUser = users.find((user) => user.username === username);
+  const passwordMatches = matchedUser
+    ? await bcrypt.compare(password, matchedUser.passwordHash)
+    : false;
 
-  if (!usernameMatches || !passwordMatches) {
+  if (!matchedUser || !passwordMatches) {
     return res.status(401).json({
       error: 'Invalid username or password.'
     });
   }
 
   const token = jwt.sign(
-    { username: ADMIN_USERNAME, role: 'admin' },
+    { username: matchedUser.username, role: matchedUser.role },
     AUTH_TOKEN_SECRET,
     { expiresIn: '8h' }
   );
@@ -703,8 +732,8 @@ app.post('/api/login', async (req, res) => {
   res.json({
     token,
     user: {
-      username: ADMIN_USERNAME,
-      role: 'admin'
+      username: matchedUser.username,
+      role: matchedUser.role
     }
   });
 });
@@ -732,7 +761,7 @@ app.get('/api/status', async (req, res) => {
   res.json(statusResponse);
 });
 
-app.get('/api/metrics', authenticateToken, async (req, res) => {
+app.get('/api/metrics', authenticateToken, requireAdmin, async (req, res) => {
   try {
     res.json(await getServerMetricsSnapshot());
   } catch (error) {
@@ -743,7 +772,7 @@ app.get('/api/metrics', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/analyze-metrics', authenticateToken, async (req, res) => {
+app.post('/api/analyze-metrics', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const metrics = req.body?.metrics || await getServerMetricsSnapshot();
 
@@ -955,7 +984,7 @@ Rules:
  * @route   POST /api/generate-commands
  * @desc    Generate safe debugging and check commands
  */
-app.post('/api/generate-commands', authenticateToken, async (req, res) => {
+app.post('/api/generate-commands', authenticateToken, requireAdmin, async (req, res) => {
   const { logText, analysis } = req.body;
 
   if (!logText || logText.trim() === "") {
@@ -1000,7 +1029,7 @@ app.post('/api/generate-commands', authenticateToken, async (req, res) => {
  * @route   POST /api/generate-report
  * @desc    Generate a structured professional incident report
  */
-app.post('/api/generate-report', authenticateToken, async (req, res) => {
+app.post('/api/generate-report', authenticateToken, requireAdmin, async (req, res) => {
   const { logText, analysis } = req.body;
 
   if (!logText || logText.trim() === "") {
@@ -1035,7 +1064,7 @@ app.post('/api/generate-report', authenticateToken, async (req, res) => {
   }
 });
 
-app.post('/api/run-safe-check', authenticateToken, async (req, res) => {
+app.post('/api/run-safe-check', authenticateToken, requireAdmin, async (req, res) => {
   const { checkType } = req.body;
 
   const safeChecks = {
@@ -1079,7 +1108,7 @@ app.post('/api/run-safe-check', authenticateToken, async (req, res) => {
 
 const HISTORY_FILE = './history.json';
 
-app.post('/api/history', async (req, res) => {
+app.post('/api/history', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const entry = req.body;
 
@@ -1112,12 +1141,53 @@ app.post('/api/history', async (req, res) => {
   }
 });
 
-app.get('/api/history', async (req, res) => {
+app.get('/api/history', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const raw = await fs.promises.readFile(HISTORY_FILE, 'utf8');
     return res.json(JSON.parse(raw));
   } catch {
     return res.json([]);
+  }
+});
+
+const FEEDBACK_FILE = './feedback.json';
+
+app.post('/api/feedback', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  const { type = 'feedback', message = '' } = req.body || {};
+  const cleanMessage = String(message).trim();
+
+  if (!cleanMessage) {
+    return res.status(400).json({
+      error: 'Feedback message is required.'
+    });
+  }
+
+  try {
+    let feedback = [];
+    try {
+      const raw = await fs.promises.readFile(FEEDBACK_FILE, 'utf8');
+      feedback = JSON.parse(raw);
+    } catch {
+      feedback = [];
+    }
+
+    feedback.unshift({
+      time: new Date().toISOString(),
+      type: String(type).slice(0, 40),
+      message: cleanMessage.slice(0, 2000),
+      from: req.user.username,
+      role: req.user.role
+    });
+
+    feedback = feedback.slice(0, 100);
+    await fs.promises.writeFile(FEEDBACK_FILE, JSON.stringify(feedback, null, 2), 'utf8');
+
+    res.json({ saved: true });
+  } catch (error) {
+    console.error('[FEEDBACK ERROR]', error);
+    res.status(500).json({
+      error: 'Could not save feedback.'
+    });
   }
 });
 

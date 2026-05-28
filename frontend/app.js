@@ -23,6 +23,7 @@ const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationLabBtn = document.getElementById('simulation-lab-btn');
 const simulationBackBtn = document.getElementById('simulation-back-btn');
 const simulationActiveBadge = document.getElementById('simulation-active-badge');
+const roleBadge = document.getElementById('role-badge');
 const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const analyzerView = document.getElementById('analyzer-view');
 const metricsDashboardView = document.getElementById('metrics-dashboard-view');
@@ -60,7 +61,9 @@ loginForm.addEventListener('submit', async (event) => {
     const data = await response.json();
 
     localStorage.setItem('authToken', data.token);
+    localStorage.setItem('userRole', data.user?.role || 'user');
     loginScreen.classList.add('hidden');
+    applyRoleAccess();
     startAuthenticatedSession();
     restoreSavedView();
 
@@ -493,6 +496,11 @@ const historyList = document.getElementById('history-list');
 const historyContent = document.getElementById('history-content');
 const toggleHistoryBtn = document.getElementById('toggle-history-btn');
 const clearLocalHistoryBtn = document.getElementById('clear-local-history-btn');
+const feedbackPanel = document.getElementById('feedback-panel');
+const feedbackType = document.getElementById('feedback-type');
+const feedbackMessage = document.getElementById('feedback-message');
+const submitFeedbackBtn = document.getElementById('submit-feedback-btn');
+const feedbackStatus = document.getElementById('feedback-status');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
@@ -1475,6 +1483,11 @@ async function pollMetrics() {
     return;
   }
 
+  if (!isAdminUser()) {
+    showMetricsError('Admin access required for live metrics.');
+    return;
+  }
+
   if (!initializeMetricsCharts()) {
     showMetricsError('Live charts could not load. Check the Chart.js script connection.');
     return;
@@ -1737,7 +1750,7 @@ function restoreSavedView() {
 }
 
 function showMetricsDashboard(options = {}) {
-  if (!localStorage.getItem('authToken')) {
+  if (!localStorage.getItem('authToken') || !isAdminUser()) {
     return;
   }
 
@@ -1795,7 +1808,7 @@ function showSimulationLab(options = {}) {
 }
 
 function showSecurityCenter(options = {}) {
-  if (!localStorage.getItem('authToken')) {
+  if (!localStorage.getItem('authToken') || !isAdminUser()) {
     return;
   }
 
@@ -1851,8 +1864,10 @@ function setHistoryVisible(isVisible) {
 function performSessionLogout() {
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
+  localStorage.removeItem('userRole');
   localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
   setSimulationMode(false);
+  applyRoleAccess();
   showAnalyzerView({ persist: false });
   loginScreen.classList.remove('hidden');
 }
@@ -1868,6 +1883,36 @@ function handleInactivityLogout() {
   }
 
   performSessionLogout();
+}
+
+function getCurrentRole() {
+  return localStorage.getItem('userRole') === 'admin' ? 'admin' : 'user';
+}
+
+function isAdminUser() {
+  return getCurrentRole() === 'admin';
+}
+
+function applyRoleAccess() {
+  const hasToken = Boolean(localStorage.getItem('authToken'));
+  const isAdmin = hasToken && isAdminUser();
+
+  if (roleBadge) {
+    roleBadge.textContent = isAdmin ? 'Role: Admin' : 'Role: User';
+    roleBadge.classList.toggle('hidden', !hasToken);
+    roleBadge.classList.toggle('role-admin', isAdmin);
+  }
+
+  dashboardViewBtn?.classList.toggle('hidden', !isAdmin);
+  securityCenterBtn?.classList.toggle('hidden', !isAdmin);
+  historyContent?.classList.add('hidden');
+  document.getElementById('history-panel')?.classList.toggle('hidden', !isAdmin);
+  clearLocalHistoryBtn?.classList.toggle('hidden', !isAdmin);
+  feedbackPanel?.classList.toggle('hidden', !hasToken);
+
+  if (!isAdmin && ['dashboard', 'security'].includes(getSavedView())) {
+    showAnalyzerView();
+  }
 }
 
 function resetInactivityTimer() {
@@ -1933,6 +1978,7 @@ function stopAuthenticatedSession() {
 
 startAuthenticatedSession();
 setSimulationMode(isSimulationModeEnabled(), { navigate: false });
+applyRoleAccess();
 restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
 
@@ -1952,6 +1998,7 @@ themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
+submitFeedbackBtn?.addEventListener('click', submitFeedbackToAdmin);
 clearLocalHistoryBtn?.addEventListener('click', () => {
   if (historyList) {
     historyList.innerHTML = '<li>Local history cleared for this browser view. Backend history was not deleted.</li>';
@@ -2397,9 +2444,62 @@ async function runQuickCheck(type) {
   }
 }
 
+async function submitFeedbackToAdmin() {
+  const message = feedbackMessage?.value.trim();
+
+  if (!message) {
+    if (feedbackStatus) {
+      feedbackStatus.textContent = 'Please enter a message before submitting.';
+      feedbackStatus.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (submitFeedbackBtn) {
+    submitFeedbackBtn.disabled = true;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      },
+      body: JSON.stringify({
+        type: feedbackType?.value || 'feedback',
+        message
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Feedback failed with ${response.status}`);
+    }
+
+    feedbackMessage.value = '';
+    if (feedbackStatus) {
+      feedbackStatus.textContent = 'Submitted to admin.';
+      feedbackStatus.classList.remove('hidden');
+    }
+  } catch (error) {
+    if (feedbackStatus) {
+      feedbackStatus.textContent = 'Could not submit feedback right now.';
+      feedbackStatus.classList.remove('hidden');
+    }
+  } finally {
+    if (submitFeedbackBtn) {
+      submitFeedbackBtn.disabled = false;
+    }
+  }
+}
+
 
 
 async function saveHistoryEntry(input, result) {
+  if (!isAdminUser()) {
+    return;
+  }
+
   const entry = {
     input: input.slice(0, 300),
     severity: result.severity || 'Unknown',
@@ -2409,7 +2509,10 @@ async function saveHistoryEntry(input, result) {
   try {
     await fetch(`${API_BASE_URL}/history`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      },
       body: JSON.stringify(entry)
     });
   } catch (error) {
@@ -2426,8 +2529,17 @@ async function renderHistory() {
 
   if (!historyList) return;
 
+  if (!isAdminUser()) {
+    historyList.innerHTML = '<li>History is available to admins only.</li>';
+    return;
+  }
+
   try {
-    const response = await fetch(`${API_BASE_URL}/history`);
+    const response = await fetch(`${API_BASE_URL}/history`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      }
+    });
     const history = await response.json();
 
     historyList.innerHTML = '';

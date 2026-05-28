@@ -50,7 +50,16 @@ variable "admin_password" {
   sensitive = true
 }
 
+variable "user_username" {
+  type    = string
+  default = "user"
+}
+
+variable "user_password" {
+  type      = string
+  sensitive = true
+}
+
 variable "auth_token_secret" {
   type = string
 }
-

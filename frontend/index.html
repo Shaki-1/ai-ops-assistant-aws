@@ -56,6 +56,7 @@
       <div class="system-time">
         <span id="header-clock">--:--:--</span>
       </div>
+      <span id="role-badge" class="role-badge hidden">Role: --</span>
       <button id="simulation-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Simulation: OFF</button>
       <button id="simulation-lab-btn" class="btn-secondary header-action-btn hidden">Simulation Lab</button>
       <span id="simulation-active-badge" class="simulation-active-badge hidden">Simulation Mode Active</span>
@@ -267,6 +268,22 @@
     <ul id="history-list" class="styled-list">
       <li>No history yet.</li>
     </ul>
+  </div>
+</section>
+
+<section class="dashboard-panel panel-feedback" id="feedback-panel">
+  <div class="panel-header">
+    <h2>Feedback to Admin</h2>
+  </div>
+  <div class="panel-content feedback-body">
+    <select id="feedback-type" aria-label="Feedback type">
+      <option value="ticket">Ticket</option>
+      <option value="suggestion">Suggestion</option>
+      <option value="feedback">Feedback</option>
+    </select>
+    <textarea id="feedback-message" placeholder="Send a ticket, suggestion, or feedback note to the admin." spellcheck="true"></textarea>
+    <button id="submit-feedback-btn" class="btn-primary">Submit to Admin</button>
+    <p id="feedback-status" class="feedback-status hidden"></p>
   </div>
 </section>
 

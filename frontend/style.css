@@ -250,6 +250,25 @@ body {
   align-items: center;
 }
 
+.role-badge {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: 0.74rem;
+  font-weight: 700;
+  min-height: var(--control-height);
+  padding: 0.45rem 0.7rem;
+  display: flex;
+  align-items: center;
+}
+
+.role-badge.role-admin {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
 .system-time {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -1800,6 +1819,21 @@ button {
   animation: fadeIn 0.4s ease-out;
 }
 
+.feedback-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.feedback-body textarea {
+  min-height: 120px;
+}
+
+.feedback-status {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 .report-actions-wrapper {
   display: flex;
   align-items: center;
@@ -2268,6 +2302,7 @@ body::before {
   .status-indicator,
   .system-time,
   .simulation-active-badge,
+  .role-badge,
   .header-action-btn,
   .header-nav-btn,
   #logout-btn {
