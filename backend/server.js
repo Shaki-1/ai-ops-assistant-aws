@@ -702,7 +702,7 @@ app.post('/api/login', async (req, res) => {
     });
   }
 
-  if (!ADMIN_PASSWORD_HASH || !USER_PASSWORD_HASH) {
+  if (!ADMIN_PASSWORD_HASH && !USER_PASSWORD_HASH) {
     return res.status(500).json({
       error: 'Authentication is not configured on the server.'
     });
@@ -711,7 +711,7 @@ app.post('/api/login', async (req, res) => {
   const users = [
     { username: ADMIN_USERNAME, passwordHash: ADMIN_PASSWORD_HASH, role: 'admin' },
     { username: USER_USERNAME, passwordHash: USER_PASSWORD_HASH, role: 'user' }
-  ];
+  ].filter((user) => Boolean(user.passwordHash));
   const matchedUser = users.find((user) => user.username === username);
   const passwordMatches = matchedUser
     ? await bcrypt.compare(password, matchedUser.passwordHash)
@@ -1188,6 +1188,7 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
       message: cleanMessage.slice(0, 2000),
       from: req.user.username,
       role: req.user.role,
+      targetUser: req.user.role === 'admin' ? USER_USERNAME : 'admin',
       status: 'New',
       replies: []
     };
@@ -1206,7 +1207,10 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
 
 app.get('/api/tickets/my', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const tickets = await readTickets();
-  res.json(tickets.filter((ticket) => ticket.from === req.user.username));
+  res.json(tickets.filter((ticket) => (
+    ticket.from === req.user.username ||
+    ticket.targetUser === req.user.username
+  )));
 });
 
 app.get('/api/tickets/admin', authenticateToken, requireAdmin, async (req, res) => {
@@ -1275,12 +1279,14 @@ app.listen(PORT, () => {
   console.log(`  AI Ops Assistant Server is active!`);
   console.log(`  Local Endpoint: http://localhost:${PORT}`);
   console.log(`  Provider:       ${aiProvider.toUpperCase()} (${isDemoMode ? 'DEMO/MOCK fallback active' : 'LIVE API active'})`);
-  console.log(`  Active Model:   ${
+    console.log(`  Active Model:   ${
     aiProvider === 'groq'
       ? (process.env.GROQ_MODEL || 'llama-3.1-8b-instant')
       : aiProvider === 'openai'
         ? openAIModel
         : ollamaModel
 }`);
+  console.log(`  Auth Admin:     username="${ADMIN_USERNAME}", hash present=${Boolean(ADMIN_PASSWORD_HASH)}`);
+  console.log(`  Auth User:      username="${USER_USERNAME}", hash present=${Boolean(USER_PASSWORD_HASH)}`);
 console.log(`================================================================`);
 });

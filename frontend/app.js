@@ -376,6 +376,7 @@ let latestMetrics = null;
 let selectedSimulationScenario = null;
 let latestSecurityStatus = null;
 let inactivityTimeoutId = null;
+let sessionHistory = [];
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -1948,12 +1949,22 @@ function applyRoleAccess() {
   dashboardViewBtn?.classList.toggle('hidden', !isAdmin);
   securityCenterBtn?.classList.toggle('hidden', !isAdmin);
   historyContent?.classList.add('hidden');
-  document.getElementById('history-panel')?.classList.toggle('hidden', !isAdmin);
+  document.getElementById('history-panel')?.classList.toggle('hidden', !hasToken);
   clearLocalHistoryBtn?.classList.toggle('hidden', !isAdmin);
   ticketsPanel?.classList.toggle('hidden', !hasToken);
 
   if (ticketsTitle) {
-    ticketsTitle.textContent = isAdmin ? 'Admin Inbox' : 'Support / Feedback';
+    ticketsTitle.textContent = isAdmin ? 'Admin Inbox / Message User' : 'Support / Feedback';
+  }
+
+  if (ticketMessage) {
+    ticketMessage.placeholder = isAdmin
+      ? 'Create a user-facing ticket/message or reply from the inbox below.'
+      : 'Send a ticket, suggestion, or feedback note to the admin.';
+  }
+
+  if (submitTicketBtn) {
+    submitTicketBtn.textContent = isAdmin ? 'Create user-facing ticket' : 'Submit to Admin';
   }
 
   if (!isAdmin && ['dashboard', 'security'].includes(getSavedView())) {
@@ -2064,6 +2075,8 @@ ticketList?.addEventListener('click', (event) => {
   }
 });
 clearLocalHistoryBtn?.addEventListener('click', () => {
+  sessionHistory = [];
+
   if (historyList) {
     historyList.innerHTML = '<li>Local history cleared for this browser view. Backend history was not deleted.</li>';
   }
@@ -2660,7 +2673,16 @@ async function replyToTicket(ticketId) {
 
 
 async function saveHistoryEntry(input, result) {
+  sessionHistory.unshift({
+    time: new Date().toISOString(),
+    input: input.slice(0, 300),
+    severity: result.severity || 'Unknown',
+    summary: result.summary || 'No summary'
+  });
+  sessionHistory = sessionHistory.slice(0, 10);
+
   if (!isAdminUser()) {
+    renderHistory();
     return;
   }
 
@@ -2694,7 +2716,25 @@ async function renderHistory() {
   if (!historyList) return;
 
   if (!isAdminUser()) {
-    historyList.innerHTML = '<li>History is available to admins only.</li>';
+    historyList.innerHTML = '';
+
+    if (sessionHistory.length === 0) {
+      historyList.innerHTML = '<li>No local session history yet.</li>';
+      return;
+    }
+
+    sessionHistory.forEach((item) => {
+      const li = document.createElement('li');
+      const time = new Date(item.time).toLocaleTimeString();
+      li.textContent = `[${time}] ${item.input.slice(0, 80)} → ${item.severity}: ${item.summary}`;
+      li.style.cursor = 'pointer';
+      li.addEventListener('click', () => {
+        logInput.value = item.input;
+        logInput.focus();
+        analyzeBtn.click();
+      });
+      historyList.appendChild(li);
+    });
     return;
   }
 
