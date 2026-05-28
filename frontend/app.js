@@ -71,12 +71,7 @@ loginForm.addEventListener('submit', async (event) => {
 });
 
 logoutBtn.addEventListener('click', () => {
-  stopAuthenticatedSession();
-  localStorage.removeItem('authToken');
-  localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
-  setSimulationMode(false);
-  showAnalyzerView({ persist: false });
-  loginScreen.classList.remove('hidden');
+  performSessionLogout();
 });
 
 // Host Configuration
@@ -377,10 +372,13 @@ let metricsCharts = null;
 let latestMetrics = null;
 let selectedSimulationScenario = null;
 let latestSecurityStatus = null;
+let inactivityTimeoutId = null;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
 const MAX_METRIC_POINTS = 20;
+const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
+const ACTIVITY_EVENTS = ['mousemove', 'click', 'keypress', 'scroll', 'touchstart'];
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -494,6 +492,7 @@ const downloadReportBtn = document.getElementById('download-report-btn');
 const historyList = document.getElementById('history-list');
 const historyContent = document.getElementById('history-content');
 const toggleHistoryBtn = document.getElementById('toggle-history-btn');
+const clearLocalHistoryBtn = document.getElementById('clear-local-history-btn');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
@@ -1697,7 +1696,9 @@ function isSimulationModeEnabled() {
   return localStorage.getItem(SIMULATION_STORAGE_KEY) === 'true';
 }
 
-function setSimulationMode(isEnabled) {
+function setSimulationMode(isEnabled, options = {}) {
+  const { navigate = true } = options;
+
   localStorage.setItem(SIMULATION_STORAGE_KEY, String(Boolean(isEnabled)));
 
   simulationToggleBtn?.setAttribute('aria-pressed', String(Boolean(isEnabled)));
@@ -1708,7 +1709,13 @@ function setSimulationMode(isEnabled) {
   simulationLabBtn?.classList.toggle('hidden', !isEnabled);
   simulationActiveBadge?.classList.toggle('hidden', !isEnabled);
 
-  if (!isEnabled && getSavedView() === 'simulation') {
+  if (!navigate) {
+    return;
+  }
+
+  if (isEnabled && localStorage.getItem('authToken')) {
+    showSimulationLab();
+  } else if (!isEnabled) {
     showAnalyzerView();
   }
 }
@@ -1841,11 +1848,46 @@ function setHistoryVisible(isVisible) {
   }
 }
 
+function performSessionLogout() {
+  stopAuthenticatedSession();
+  localStorage.removeItem('authToken');
+  localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  setSimulationMode(false);
+  showAnalyzerView({ persist: false });
+  loginScreen.classList.remove('hidden');
+}
+
+function handleInactivityLogout() {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  if (loginError) {
+    loginError.textContent = 'Session expired due to inactivity. Please log in again.';
+    loginError.classList.remove('hidden');
+  }
+
+  performSessionLogout();
+}
+
+function resetInactivityTimer() {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  if (inactivityTimeoutId) {
+    clearTimeout(inactivityTimeoutId);
+  }
+
+  inactivityTimeoutId = setTimeout(handleInactivityLogout, INACTIVITY_TIMEOUT_MS);
+}
+
 function startAuthenticatedSession() {
   if (!localStorage.getItem('authToken')) {
     return;
   }
 
+  resetInactivityTimer();
   updateHeaderClock();
 
   if (!clockIntervalId) {
@@ -1864,6 +1906,11 @@ function startAuthenticatedSession() {
 }
 
 function stopAuthenticatedSession() {
+  if (inactivityTimeoutId) {
+    clearTimeout(inactivityTimeoutId);
+    inactivityTimeoutId = null;
+  }
+
   if (healthPollIntervalId) {
     clearInterval(healthPollIntervalId);
     healthPollIntervalId = null;
@@ -1885,7 +1932,7 @@ function stopAuthenticatedSession() {
 }
 
 startAuthenticatedSession();
-setSimulationMode(isSimulationModeEnabled());
+setSimulationMode(isSimulationModeEnabled(), { navigate: false });
 restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
 
@@ -1905,6 +1952,13 @@ themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
+clearLocalHistoryBtn?.addEventListener('click', () => {
+  if (historyList) {
+    historyList.innerHTML = '<li>Local history cleared for this browser view. Backend history was not deleted.</li>';
+  }
+
+  setHistoryVisible(true);
+});
 toggleHistoryBtn?.addEventListener('click', () => {
   const willShow = historyContent?.classList.contains('hidden');
   setHistoryVisible(Boolean(willShow));
@@ -1912,6 +1966,10 @@ toggleHistoryBtn?.addEventListener('click', () => {
   if (willShow) {
     renderHistory();
   }
+});
+
+ACTIVITY_EVENTS.forEach((eventName) => {
+  window.addEventListener(eventName, resetInactivityTimer, { passive: true });
 });
 
 setHistoryVisible(false);

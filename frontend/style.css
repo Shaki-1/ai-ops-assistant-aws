@@ -717,8 +717,7 @@ body {
   grid-column: 1 / -1;
 }
 
-.ai-metrics-panel,
-.dashboard-upgrades {
+.ai-metrics-panel {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
@@ -734,8 +733,7 @@ body {
   gap: 1rem;
 }
 
-.ai-metrics-header h3,
-.dashboard-upgrades h3 {
+.ai-metrics-header h3 {
   color: var(--text-primary);
   font-size: 1rem;
   font-weight: 700;
@@ -786,21 +784,6 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 0.55rem;
-}
-
-.upgrade-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-}
-
-.upgrade-chip-list span {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  font-size: 0.78rem;
-  padding: 0.45rem 0.65rem;
 }
 
 .simulation-warning {
