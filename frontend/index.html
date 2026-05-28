@@ -94,21 +94,8 @@
 
         <div class="analyzer-body">
           <div class="analyzer-intro">
-            <h3>Paste logs or command output</h3>
-            <p>Add syslog, journalctl, web server errors, auth logs, or terminal output for AI-assisted troubleshooting.</p>
-          </div>
-
-          <div class="demo-logs-selector">
-            <label for="demo-select">Load Sample System Log:</label>
-            <div class="select-wrapper">
-              <select id="demo-select">
-                <option value="" disabled selected>-- Select a standard log template --</option>
-                <option value="nginx-502">Nginx 502 Bad Gateway Error</option>
-                <option value="ssh-bruteforce">SSH Brute-Force Scanning Attack</option>
-                <option value="linux-oom">Linux Kernel Out-of-Memory (OOM) Kill</option>
-                <option value="apache-forbidden">Apache 403 Directory Listing Forbidden</option>
-              </select>
-            </div>
+            <h3>Step 1 — Paste logs or command output</h3>
+            <p>Add syslog, journalctl, Nginx/Apache errors, auth logs, or terminal output. Then run analysis.</p>
           </div>
 
           <div class="textarea-container">
@@ -136,6 +123,11 @@
             <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
             <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
             <button class="btn-secondary" onclick="runQuickCheck('ssh')">Check SSH</button>
+          </div>
+
+          <div class="responsible-use-inline hidden" id="responsible-use-inline">
+            <strong>Responsible Use</strong>
+            <p>Do not paste personal data, secrets, passwords, API keys, private keys, or confidential customer data. Use only logs you are allowed to process. Simulation mode is training-only, and AI suggestions must be manually verified.</p>
           </div>
 
         </div>
@@ -279,25 +271,6 @@
   </div>
 </section>
 
-<section class="dashboard-panel panel-feedback" id="tickets-panel">
-  <div class="panel-header">
-    <h2 id="tickets-title">Support / Feedback</h2>
-    <button class="btn-secondary panel-header-action" id="refresh-tickets-btn">Refresh</button>
-  </div>
-  <div class="panel-content feedback-body">
-    <select id="ticket-type" aria-label="Message type">
-      <option value="ticket">Ticket</option>
-      <option value="suggestion">Suggestion</option>
-      <option value="feedback">Feedback</option>
-    </select>
-    <textarea id="ticket-message" placeholder="Send a ticket, suggestion, or feedback note." spellcheck="true"></textarea>
-    <button id="submit-ticket-btn" class="btn-primary">Submit</button>
-    <p id="ticket-status" class="feedback-status hidden"></p>
-    <div class="ticket-list" id="ticket-list"></div>
-  </div>
-</section>
-
-
       <!-- Section 4: Safe Commands & Scripts Generator -->
       <section class="dashboard-panel panel-commands hidden" id="commands-panel" aria-labelledby="commands-title">
         <div class="panel-header">
@@ -431,6 +404,7 @@
       <div class="dashboard-side-nav">
         <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
         <button id="security-center-btn" class="btn-secondary header-nav-btn">Security Center</button>
+        <button id="inbox-view-btn" class="btn-secondary header-nav-btn">Admin Inbox</button>
       </div>
     </div>
 
@@ -736,7 +710,7 @@
             <h3>AI Security Review</h3>
             <p>Defensive posture review based only on current browser, API, auth, and dashboard status signals.</p>
           </div>
-          <button id="security-ai-review-btn" class="btn-secondary">AI Review Security Posture</button>
+          <button id="security-ai-review-btn" class="btn-secondary">Explain this status</button>
         </div>
         <div class="loading-state hidden compact-loading" id="security-ai-loading">
           <div class="spinner"></div>
@@ -763,6 +737,47 @@
           </div>
         </div>
       </section>
+
+      <section class="security-section-card compliance-notice" id="compliance-notice">
+        <h3>Responsible Use</h3>
+        <ul class="styled-list">
+          <li>Do not paste personal data, secrets, passwords, API keys, private keys, or confidential customer data.</li>
+          <li>Logs may contain personal data under GDPR; use only content you are allowed to process.</li>
+          <li>Simulation mode is training-only and does not represent real server state.</li>
+          <li>AI suggestions are guidance and must be manually verified before action.</li>
+        </ul>
+      </section>
+    </div>
+  </section>
+
+  <section class="dashboard-view inbox-view hidden" id="inbox-view" aria-labelledby="inbox-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Messages</p>
+          <h2 id="inbox-title">Support / Feedback</h2>
+          <p>Review tickets, suggestions, feedback, and admin replies.</p>
+        </div>
+        <button id="inbox-back-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <section class="dashboard-panel panel-feedback" id="tickets-panel">
+        <div class="panel-header">
+          <h2 id="tickets-title">Support / Feedback</h2>
+          <button class="btn-secondary panel-header-action" id="refresh-tickets-btn">Refresh</button>
+        </div>
+        <div class="panel-content feedback-body">
+          <select id="ticket-type" aria-label="Message type">
+            <option value="ticket">Ticket</option>
+            <option value="suggestion">Suggestion</option>
+            <option value="feedback">Feedback</option>
+          </select>
+          <textarea id="ticket-message" placeholder="Send a ticket, suggestion, or feedback note." spellcheck="true"></textarea>
+          <button id="submit-ticket-btn" class="btn-primary">Submit</button>
+          <p id="ticket-status" class="feedback-status hidden"></p>
+          <div class="ticket-list" id="ticket-list"></div>
+        </div>
+      </section>
     </div>
   </section>
 
@@ -771,6 +786,7 @@
       <strong>AI Ops Assistant</strong> - Educational System Administration Suite.
     </div>
     <div class="footer-right">
+      <a href="#compliance-notice" id="footer-compliance-link">Responsible Use</a>
       <span>Safety Layer Active</span>
       <svg class="secure-badge-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>

@@ -467,6 +467,8 @@ body {
 
 .dashboard-side-nav {
   margin-top: -1.25rem;
+  display: grid;
+  gap: 0.65rem;
 }
 
 .dashboard-side-nav .header-nav-btn {
@@ -851,10 +853,25 @@ body {
 }
 
 .simulation-scenarios {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  align-content: start;
+}
+
+.simulation-scenario-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem;
-  align-content: start;
+}
+
+.simulation-scenario-group h3 {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .simulation-scenario-card {
@@ -1161,6 +1178,7 @@ body {
   border: 1px solid rgba(59, 130, 246, 0.22);
   border-radius: var(--border-radius-md);
   background: var(--color-primary-bg);
+  border-left: 3px solid var(--color-primary);
 }
 
 .analyzer-intro h3 {
@@ -1176,16 +1194,24 @@ body {
   line-height: 1.5;
 }
 
-.demo-logs-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.responsible-use-inline {
+  border: 1px solid rgba(245, 158, 11, 0.24);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--border-radius-md);
+  background: var(--color-warning-bg);
+  padding: 0.85rem 1rem;
 }
 
-.demo-logs-selector label {
-  font-size: 0.8rem;
+.responsible-use-inline strong {
+  color: var(--text-primary);
+  font-size: 0.86rem;
+}
+
+.responsible-use-inline p {
   color: var(--text-secondary);
-  font-weight: 500;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin-top: 0.3rem;
 }
 
 .select-wrapper {
@@ -2108,7 +2134,7 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .simulation-scenarios {
+  .simulation-scenario-group {
     grid-template-columns: 1fr;
   }
 

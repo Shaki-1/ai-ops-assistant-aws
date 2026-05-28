@@ -17,8 +17,12 @@ const logoutBtn = document.getElementById('logout-btn');
 const appHomeBtn = document.getElementById('app-home-btn');
 const dashboardViewBtn = document.getElementById('dashboard-view-btn');
 const securityCenterBtn = document.getElementById('security-center-btn');
+const inboxViewBtn = document.getElementById('inbox-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
 const securityBackBtn = document.getElementById('security-back-btn');
+const inboxBackBtn = document.getElementById('inbox-back-btn');
+const footerComplianceLink = document.getElementById('footer-compliance-link');
+const responsibleUseInline = document.getElementById('responsible-use-inline');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationLabBtn = document.getElementById('simulation-lab-btn');
 const simulationBackBtn = document.getElementById('simulation-back-btn');
@@ -29,11 +33,12 @@ const analyzerView = document.getElementById('analyzer-view');
 const metricsDashboardView = document.getElementById('metrics-dashboard-view');
 const simulationLabView = document.getElementById('simulation-lab-view');
 const securityCenterView = document.getElementById('security-center-view');
+const inboxView = document.getElementById('inbox-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox']);
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -146,6 +151,7 @@ ssh.service - OpenSSH server daemon
 const SIMULATION_SCENARIOS = [
   {
     id: 'server-down',
+    category: 'Availability',
     title: 'Server Down',
     level: 'Critical',
     summary: 'Primary web service is unreachable and returning connection failures.',
@@ -166,6 +172,7 @@ Recent event: backend process stopped unexpectedly.`,
   },
   {
     id: 'high-cpu',
+    category: 'Performance',
     title: 'High CPU Load',
     level: 'Warning',
     summary: 'CPU load is elevated and API responses may become slower.',
@@ -185,6 +192,7 @@ Status: degraded but still responding.`,
   },
   {
     id: 'memory-pressure',
+    category: 'Performance',
     title: 'Memory Pressure',
     level: 'Warning',
     summary: 'RAM usage is high and the server may become unstable if it continues rising.',
@@ -204,6 +212,7 @@ Status: warning threshold reached.`,
   },
   {
     id: 'disk-full',
+    category: 'Performance',
     title: 'Disk Almost Full',
     level: 'Critical',
     summary: 'Disk usage is near capacity and writes may fail soon.',
@@ -223,6 +232,7 @@ Large backup/history logs detected.`,
   },
   {
     id: 'nginx-502',
+    category: 'Web/Proxy',
     title: 'Nginx 502 Gateway Error',
     level: 'Critical',
     summary: 'Nginx is online but cannot reach the upstream backend.',
@@ -238,6 +248,7 @@ Large backup/history logs detected.`,
   },
   {
     id: 'backend-api-down',
+    category: 'Availability',
     title: 'Backend API Down',
     level: 'Critical',
     summary: 'Frontend loads, but protected API calls fail.',
@@ -257,6 +268,7 @@ Recent logs: server failed during startup.`,
   },
   {
     id: 'ssh-bruteforce',
+    category: 'Security',
     title: 'SSH Brute Force Attempt',
     level: 'Warning',
     summary: 'Repeated failed SSH login attempts are targeting public usernames.',
@@ -272,6 +284,7 @@ Recent logs: server failed during startup.`,
   },
   {
     id: 'suspicious-login',
+    category: 'Security',
     title: 'Suspicious Login Activity',
     level: 'Warning',
     summary: 'A login occurred from an unusual source after repeated attempts.',
@@ -290,6 +303,7 @@ last login source differs from normal administrator network.`,
   },
   {
     id: 'possible-compromise',
+    category: 'Security',
     title: 'Possible Compromise',
     level: 'Critical',
     summary: 'Multiple indicators suggest the host may need containment review.',
@@ -309,6 +323,7 @@ Several protected files changed recently.`,
   },
   {
     id: 'dns-duckdns',
+    category: 'Availability',
     title: 'DNS/DuckDNS Failure',
     level: 'Warning',
     summary: 'Domain update or DNS resolution is failing intermittently.',
@@ -327,6 +342,7 @@ Browser cannot resolve the expected hostname from some networks.`,
   },
   {
     id: 'cert-https',
+    category: 'Availability',
     title: 'Certificate/HTTPS Failure',
     level: 'Warning',
     summary: 'HTTPS is unavailable or certificate renewal is not valid.',
@@ -345,6 +361,7 @@ HTTP remains available on port 80.`,
   },
   {
     id: 'slow-api',
+    category: 'Performance',
     title: 'Slow API Latency',
     level: 'Warning',
     summary: 'API requests are succeeding but latency is above normal.',
@@ -377,12 +394,14 @@ let selectedSimulationScenario = null;
 let latestSecurityStatus = null;
 let inactivityTimeoutId = null;
 let sessionHistory = [];
+let inboxPollIntervalId = null;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
 const MAX_METRIC_POINTS = 20;
 const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const ACTIVITY_EVENTS = ['mousemove', 'click', 'keypress', 'scroll', 'touchstart'];
+const INBOX_REFRESH_MS = 10000;
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -460,7 +479,6 @@ const summaryPlatform = document.getElementById('summary-platform');
 const summaryNodeVersion = document.getElementById('summary-node-version');
 const summaryBackendStatus = document.getElementById('summary-backend-status');
 
-const demoSelect = document.getElementById('demo-select');
 const logInput = document.getElementById('log-input');
 const clearInputBtn = document.getElementById('clear-input-btn');
 const analyzeBtn = document.getElementById('analyze-btn');
@@ -1169,10 +1187,18 @@ function renderSecurityChecks(status) {
     `API health: ${status.apiOk ? 'available' : 'unavailable'}`,
     `Metrics availability: ${status.metricsOk ? 'available with current token' : 'unavailable or requires login'}`,
     `Connection protocol: ${status.protocol}`,
+    `Frontend protocol: ${status.protocol}`,
     `Current host/domain: ${status.host}`,
     `Local authentication token: ${status.authenticated ? 'present' : 'missing'}`,
-    `Simulation mode: ${status.simulationMode ? 'active' : 'off'}`
+    `Simulation mode: ${status.simulationMode ? 'active' : 'off'}`,
+    'Backend exposure reminder: port 3000 should stay behind Nginx.',
+    'Certificate/rate-limit reminder: avoid repeated certificate requests.',
+    'Data handling reminder: do not paste secrets or personal data into AI analysis.'
   ]);
+}
+
+function securityLabel(label, ok) {
+  return `${ok ? 'Healthy' : 'Action needed'} — ${label}`;
 }
 
 async function refreshSecurityCenter() {
@@ -1211,10 +1237,10 @@ async function refreshSecurityCenter() {
 
   latestSecurityStatus = status;
 
-  setMetricText(securityHttpsStatus, protocol === 'https:' ? 'HTTPS active' : 'HTTPS unavailable');
-  setMetricText(securityDnsStatus, host.includes('duckdns.org') ? 'DuckDNS host detected' : 'Current host shown below');
-  setMetricText(securityApiStatus, status.apiOk ? 'API reachable' : 'API unavailable');
-  setMetricText(securityAuthStatus, status.authenticated ? 'Authenticated locally' : 'Unauthenticated');
+  setMetricText(securityHttpsStatus, protocol === 'https:' ? securityLabel('HTTPS active', true) : 'Warning — HTTPS unavailable');
+  setMetricText(securityDnsStatus, host.includes('duckdns.org') ? securityLabel('DuckDNS host detected', true) : 'Warning — custom/local host');
+  setMetricText(securityApiStatus, status.apiOk ? securityLabel('API reachable', true) : 'Action needed — API unavailable');
+  setMetricText(securityAuthStatus, status.authenticated ? securityLabel('Authenticated locally', true) : 'Action needed — unauthenticated');
   setMetricText(securityHostStatus, host);
   setMetricText(securityLastChecked, status.checkedAt);
   renderSecurityChecks(status);
@@ -1291,7 +1317,7 @@ async function reviewSecurityPostureWithAI() {
   try {
     await refreshSecurityCenter();
 
-    const prompt = `Defensive security posture review only.
+    const prompt = `Explain this defensive security status only.
 
 Current status:
 ${JSON.stringify(latestSecurityStatus, null, 2)}
@@ -1303,10 +1329,9 @@ Recommended exposed ports:
 - 3000 backend: should NOT be public, only behind Nginx
 
 Return concise defensive guidance with:
-- overall security posture
-- risks
-- recommended hardening steps
-- priority actions`;
+- what is healthy
+- what needs attention
+- priority next steps`;
 
     const response = await fetch(`${API_BASE_URL}/analyze-log`, {
       method: 'POST',
@@ -1380,19 +1405,30 @@ function renderSimulationScenarios() {
   }
 
   simulationScenarios.innerHTML = '';
+  const categoryOrder = ['Availability', 'Performance', 'Web/Proxy', 'Security'];
 
-  SIMULATION_SCENARIOS.forEach((scenario) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'simulation-scenario-card';
-    button.dataset.scenarioId = scenario.id;
-    button.innerHTML = `
-      <span class="badge ${getSimulationBadgeClass(scenario.level)}">${scenario.level}</span>
-      <strong>${scenario.title}</strong>
-      <span>${scenario.summary}</span>
-    `;
-    button.addEventListener('click', () => selectSimulationScenario(scenario.id));
-    simulationScenarios.appendChild(button);
+  categoryOrder.forEach((category) => {
+    const group = document.createElement('div');
+    group.className = 'simulation-scenario-group';
+    group.innerHTML = `<h3>${category}</h3>`;
+
+    SIMULATION_SCENARIOS
+      .filter((scenario) => scenario.category === category)
+      .forEach((scenario) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'simulation-scenario-card';
+        button.dataset.scenarioId = scenario.id;
+        button.innerHTML = `
+          <span class="badge ${getSimulationBadgeClass(scenario.level)}">${scenario.level}</span>
+          <strong>${scenario.title}</strong>
+          <span>${scenario.summary}</span>
+        `;
+        button.addEventListener('click', () => selectSimulationScenario(scenario.id));
+        group.appendChild(button);
+      });
+
+    simulationScenarios.appendChild(group);
   });
 }
 
@@ -1787,6 +1823,8 @@ function restoreSavedView() {
     showSimulationLab({ persist: false });
   } else if (getSavedView() === 'security') {
     showSecurityCenter({ persist: false });
+  } else if (getSavedView() === 'inbox') {
+    showInboxView({ persist: false });
   } else {
     showAnalyzerView({ persist: false });
   }
@@ -1802,6 +1840,8 @@ function showMetricsDashboard(options = {}) {
   analyzerView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  stopInboxPolling();
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
 
@@ -1824,6 +1864,8 @@ function showAnalyzerView(options = {}) {
   metricsDashboardView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  stopInboxPolling();
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -1842,6 +1884,8 @@ function showSimulationLab(options = {}) {
   analyzerView?.classList.add('hidden');
   metricsDashboardView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  stopInboxPolling();
   simulationLabView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -1860,6 +1904,8 @@ function showSecurityCenter(options = {}) {
   analyzerView?.classList.add('hidden');
   metricsDashboardView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  stopInboxPolling();
   securityCenterView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -1868,6 +1914,28 @@ function showSecurityCenter(options = {}) {
   }
 
   refreshSecurityCenter();
+}
+
+function showInboxView(options = {}) {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
+  inboxView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'inbox');
+  }
+
+  loadTickets();
+  startInboxPolling();
 }
 
 function applyTheme(theme) {
@@ -1948,6 +2016,7 @@ function applyRoleAccess() {
 
   dashboardViewBtn?.classList.toggle('hidden', !isAdmin);
   securityCenterBtn?.classList.toggle('hidden', !isAdmin);
+  inboxViewBtn?.classList.toggle('hidden', !hasToken);
   historyContent?.classList.add('hidden');
   document.getElementById('history-panel')?.classList.toggle('hidden', !hasToken);
   clearLocalHistoryBtn?.classList.toggle('hidden', !isAdmin);
@@ -1955,6 +2024,14 @@ function applyRoleAccess() {
 
   if (ticketsTitle) {
     ticketsTitle.textContent = isAdmin ? 'Admin Inbox / Message User' : 'Support / Feedback';
+  }
+
+  if (inboxViewBtn) {
+    inboxViewBtn.textContent = isAdmin ? 'Admin Inbox' : 'My Tickets';
+  }
+
+  if (document.getElementById('inbox-title')) {
+    document.getElementById('inbox-title').textContent = isAdmin ? 'Admin Inbox' : 'My Tickets';
   }
 
   if (ticketMessage) {
@@ -1988,6 +2065,21 @@ function resetInactivityTimer() {
   inactivityTimeoutId = setTimeout(handleInactivityLogout, INACTIVITY_TIMEOUT_MS);
 }
 
+function startInboxPolling() {
+  if (inboxPollIntervalId || inboxView?.classList.contains('hidden')) {
+    return;
+  }
+
+  inboxPollIntervalId = setInterval(loadTickets, INBOX_REFRESH_MS);
+}
+
+function stopInboxPolling() {
+  if (inboxPollIntervalId) {
+    clearInterval(inboxPollIntervalId);
+    inboxPollIntervalId = null;
+  }
+}
+
 function startAuthenticatedSession() {
   if (!localStorage.getItem('authToken')) {
     return;
@@ -2012,6 +2104,8 @@ function startAuthenticatedSession() {
 }
 
 function stopAuthenticatedSession() {
+  stopInboxPolling();
+
   if (inactivityTimeoutId) {
     clearTimeout(inactivityTimeoutId);
     inactivityTimeoutId = null;
@@ -2050,8 +2144,10 @@ applyTheme(localStorage.getItem('themePreference') || 'dark');
 appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 securityCenterBtn?.addEventListener('click', showSecurityCenter);
+inboxViewBtn?.addEventListener('click', showInboxView);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 securityBackBtn?.addEventListener('click', showAnalyzerView);
+inboxBackBtn?.addEventListener('click', showAnalyzerView);
 simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
 simulationLabBtn?.addEventListener('click', showSimulationLab);
 simulationBackBtn?.addEventListener('click', showAnalyzerView);
@@ -2062,6 +2158,17 @@ securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
 refreshTicketsBtn?.addEventListener('click', loadTickets);
 changeSimulationBtn?.addEventListener('click', showSimulationLab);
+footerComplianceLink?.addEventListener('click', (event) => {
+  if (!isAdminUser()) {
+    event.preventDefault();
+    showAnalyzerView();
+    responsibleUseInline?.classList.remove('hidden');
+    responsibleUseInline?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  showSecurityCenter();
+});
 ticketList?.addEventListener('change', (event) => {
   const ticketId = event.target?.dataset?.ticketStatus;
   if (ticketId) {
@@ -2099,19 +2206,9 @@ ACTIVITY_EVENTS.forEach((eventName) => {
 setHistoryVisible(false);
 renderSimulationScenarios();
 
-// Demo Selector loader
-demoSelect.addEventListener('change', (e) => {
-  const templateKey = e.target.value;
-  if (LOG_TEMPLATES[templateKey]) {
-    logInput.value = LOG_TEMPLATES[templateKey];
-    logInput.focus();
-  }
-});
-
 // Clear textarea logic
 clearInputBtn.addEventListener('click', () => {
   logInput.value = "";
-  demoSelect.selectedIndex = 0;
   logInput.focus();
 });
 
