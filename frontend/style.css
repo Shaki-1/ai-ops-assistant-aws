@@ -292,6 +292,33 @@ body {
   border-color: rgba(59, 130, 246, 0.28);
 }
 
+.live-status-badge {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.live-status-badge.live-connected {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.live-status-badge.live-reconnecting {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.live-status-badge.live-fallback {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+}
+
 .system-time {
   font-family: var(--font-mono);
   font-size: 0.85rem;

@@ -406,6 +406,11 @@ let inboxPollIntervalId = null;
 let inboxNotificationPollIntervalId = null;
 let activeAnalysisAbortController = null;
 let analysisRequestId = 0;
+let liveSocket = null;
+let liveReconnectTimerId = null;
+let liveReconnectAttempt = 0;
+let isLiveConnected = false;
+let isLiveDisconnecting = false;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -425,6 +430,7 @@ const diskFill = document.getElementById('disk-fill');
 const diskDetails = document.getElementById('disk-details');
 const lastPolledText = document.getElementById('last-polled-time');
 const headerClock = document.getElementById('header-clock');
+const liveStatusBadge = document.getElementById('live-status-badge');
 const metricsError = document.getElementById('metrics-error');
 const aiMetricsBtn = document.getElementById('ai-metrics-btn');
 const toggleAiMetricsPanelBtn = document.getElementById('toggle-ai-metrics-panel-btn');
@@ -1498,6 +1504,164 @@ function setAiMetricsHealthBadge(health) {
   aiMetricsHealth.className = `badge ${classMap[normalizedHealth]}`;
 }
 
+function updateLiveStatus(status) {
+  if (!liveStatusBadge) return;
+  const normalizedStatus = status || 'fallback';
+  const labels = {
+    connected: 'Live connected',
+    reconnecting: 'Live reconnecting',
+    fallback: 'Live fallback'
+  };
+  liveStatusBadge.textContent = labels[normalizedStatus] || labels.fallback;
+  liveStatusBadge.className = `live-status-badge live-${normalizedStatus}`;
+}
+
+function getWebSocketUrl() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const token = encodeURIComponent(localStorage.getItem('authToken') || '');
+  return `${protocol}//${window.location.host}/ws?token=${token}`;
+}
+
+function stopMetricsPolling() {
+  if (metricsPollIntervalId) {
+    clearInterval(metricsPollIntervalId);
+    metricsPollIntervalId = null;
+  }
+}
+
+function startRestFallbackPolling() {
+  if (!localStorage.getItem('authToken') || isLiveConnected) return;
+
+  if (!metricsPollIntervalId) {
+    if (!isLiveConnected) {
+      pollMetrics();
+    }
+    metricsPollIntervalId = setInterval(pollMetrics, METRICS_REFRESH_MS);
+  }
+
+  startInboxNotificationPolling();
+}
+
+function handleLiveMetrics(metrics) {
+  latestMetrics = metrics;
+  renderAlerts(metrics.alerts || []);
+
+  if (!isMetricsDashboardVisible() || !isAdminUser() || !initializeMetricsCharts()) return;
+
+  const pointLabel = new Date(metrics.timestamp).toLocaleTimeString();
+  const cpu = Number(metrics.cpuLoadPercent);
+  const ram = Number(metrics.memoryUsagePercent);
+  const disk = Number(metrics.diskUsagePercent);
+
+  updateOperationalMetrics(metrics);
+  appendMetricPoint(metricsCharts.cpu, pointLabel, cpu);
+  appendMetricPoint(metricsCharts.ram, pointLabel, ram);
+  appendMetricPoint(metricsCharts.disk, pointLabel, disk);
+  updateMetricValue(cpuChartValue, cpu);
+  updateMetricValue(ramChartValue, ram);
+  updateMetricValue(diskChartValue, disk);
+  updateStatusBadge(cpuStatus, cpu);
+  updateStatusBadge(ramStatus, ram);
+  updateStatusBadge(diskStatus, disk);
+  clearMetricsError();
+}
+
+function handleLiveTimelineEvent(event) {
+  if (!event || !isAdminUser()) return;
+  incidentTimelineEvents.unshift(event);
+  incidentTimelineEvents = incidentTimelineEvents.slice(0, 500);
+
+  if (timelineView && !timelineView.classList.contains('hidden')) {
+    renderTimelineEvents();
+  }
+}
+
+function handleLiveMessage(data) {
+  if (data.type === 'metrics') handleLiveMetrics(data.metrics);
+  else if (data.type === 'alerts') renderAlerts(data.alerts || []);
+  else if (data.type === 'inbox_unread') updateInboxNotificationBadge(data.count);
+  else if (data.type === 'timeline_event') handleLiveTimelineEvent(data.event);
+}
+
+function connectLiveUpdates() {
+  const token = localStorage.getItem('authToken');
+  if (!token || liveSocket) return;
+
+  updateLiveStatus(liveReconnectAttempt ? 'reconnecting' : 'fallback');
+
+  try {
+    isLiveDisconnecting = false;
+    liveSocket = new WebSocket(getWebSocketUrl());
+  } catch {
+    liveSocket = null;
+    scheduleLiveReconnect();
+    startRestFallbackPolling();
+    return;
+  }
+
+  liveSocket.addEventListener('open', () => {
+    isLiveConnected = true;
+    liveReconnectAttempt = 0;
+    updateLiveStatus('connected');
+    stopMetricsPolling();
+    stopInboxNotificationPolling();
+  });
+
+  liveSocket.addEventListener('message', (event) => {
+    try {
+      handleLiveMessage(JSON.parse(event.data));
+    } catch {
+      // Ignore malformed live updates.
+    }
+  });
+
+  liveSocket.addEventListener('close', () => {
+    liveSocket = null;
+    isLiveConnected = false;
+
+    if (isLiveDisconnecting) {
+      isLiveDisconnecting = false;
+      return;
+    }
+
+    updateLiveStatus('reconnecting');
+    startRestFallbackPolling();
+    scheduleLiveReconnect();
+  });
+
+  liveSocket.addEventListener('error', () => {
+    updateLiveStatus('fallback');
+  });
+}
+
+function scheduleLiveReconnect() {
+  if (!localStorage.getItem('authToken') || liveReconnectTimerId) return;
+
+  liveReconnectAttempt += 1;
+  const delay = Math.min(30000, 1000 * (2 ** Math.min(liveReconnectAttempt, 5)));
+  liveReconnectTimerId = setTimeout(() => {
+    liveReconnectTimerId = null;
+    connectLiveUpdates();
+  }, delay);
+}
+
+function disconnectLiveUpdates() {
+  if (liveReconnectTimerId) {
+    clearTimeout(liveReconnectTimerId);
+    liveReconnectTimerId = null;
+  }
+
+  if (liveSocket) {
+    isLiveDisconnecting = true;
+    liveSocket.close();
+    liveSocket = null;
+  }
+
+  isLiveConnected = false;
+  liveReconnectAttempt = 0;
+  updateLiveStatus('fallback');
+}
+
 function getAlertBadgeClass(severity) {
   const normalizedSeverity = String(severity || 'Info').toLowerCase();
 
@@ -1937,26 +2101,7 @@ async function pollMetrics() {
     }
 
     const metrics = await response.json();
-    latestMetrics = metrics;
-    renderAlerts(metrics.alerts || []);
-    const pointLabel = new Date(metrics.timestamp).toLocaleTimeString();
-    const cpu = Number(metrics.cpuLoadPercent);
-    const ram = Number(metrics.memoryUsagePercent);
-    const disk = Number(metrics.diskUsagePercent);
-
-    updateOperationalMetrics(metrics);
-
-    appendMetricPoint(metricsCharts.cpu, pointLabel, cpu);
-    appendMetricPoint(metricsCharts.ram, pointLabel, ram);
-    appendMetricPoint(metricsCharts.disk, pointLabel, disk);
-
-    updateMetricValue(cpuChartValue, cpu);
-    updateMetricValue(ramChartValue, ram);
-    updateMetricValue(diskChartValue, disk);
-    updateStatusBadge(cpuStatus, cpu);
-    updateStatusBadge(ramStatus, ram);
-    updateStatusBadge(diskStatus, disk);
-    clearMetricsError();
+    handleLiveMetrics(metrics);
   } catch (error) {
     console.warn('[METRICS] Failed to refresh live metrics.', error.message);
     showMetricsError('Live metrics are temporarily unavailable.');
@@ -2373,7 +2518,9 @@ function applyTheme(theme) {
   if (metricsCharts) {
     destroyMetricsCharts();
     if (isMetricsDashboardVisible()) {
-      requestAnimationFrame(pollMetrics);
+      if (!isLiveConnected) {
+        requestAnimationFrame(pollMetrics);
+      }
     }
   }
 }
@@ -2593,15 +2740,12 @@ function startAuthenticatedSession() {
     healthPollIntervalId = setInterval(pollServerHealth, HEALTH_REFRESH_MS);
   }
 
-  if (!metricsPollIntervalId) {
-    pollMetrics();
-    metricsPollIntervalId = setInterval(pollMetrics, METRICS_REFRESH_MS);
-  }
-
-  startInboxNotificationPolling();
+  connectLiveUpdates();
+  startRestFallbackPolling();
 }
 
 function stopAuthenticatedSession() {
+  disconnectLiveUpdates();
   stopInboxPolling();
   stopInboxNotificationPolling();
 
@@ -2615,10 +2759,7 @@ function stopAuthenticatedSession() {
     healthPollIntervalId = null;
   }
 
-  if (metricsPollIntervalId) {
-    clearInterval(metricsPollIntervalId);
-    metricsPollIntervalId = null;
-  }
+  stopMetricsPolling();
 
   if (clockIntervalId) {
     clearInterval(clockIntervalId);

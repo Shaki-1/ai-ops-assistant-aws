@@ -3,11 +3,13 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import os from 'os';
 import fs from 'fs';
+import http from 'http';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import OpenAI from 'openai';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import { WebSocketServer, WebSocket } from 'ws';
 
 const execPromise = promisify(exec);
 
@@ -23,11 +25,13 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
 const USER_USERNAME = process.env.USER_USERNAME || 'user';
 const USER_PASSWORD_HASH = process.env.USER_PASSWORD_HASH || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
+const wsClients = new Set();
 
 const apiRuntimeMetrics = {
   totalRequests: 0,
@@ -94,6 +98,7 @@ async function recordTimelineEvent({
       metadata: sanitizeObject(metadata || {})
     });
     await writeTimelineEvents(events);
+    broadcastTimelineEvent(events[0]);
   } catch (error) {
     console.warn('[TIMELINE] Could not record event:', error.message);
   }
@@ -1098,6 +1103,11 @@ app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async 
   alert.acknowledgedBy = req.user.username;
   alert.resolvedAt = alert.acknowledgedAt;
   acknowledgedAlertValues.set(alert.type, Number(alert.value || 0));
+  broadcastToAdmins({
+    type: 'alerts',
+    alerts: getAlertsSnapshot(),
+    activeCount: getActiveAlertCount()
+  });
   queueTimelineEvent({
     type: 'alert_acknowledged',
     category: 'Alerts',
@@ -1744,6 +1754,13 @@ function canViewTicket(ticket, user) {
     ticket.targetUser === user.username;
 }
 
+function getUnreadTicketCountFor(username) {
+  return readTickets().then((tickets) => tickets.filter((ticket) => (
+    (ticket.from === username || ticket.targetUser === username || username === ADMIN_USERNAME) &&
+    !(Array.isArray(ticket.readBy) && ticket.readBy.includes(username))
+  )).length);
+}
+
 function markTicketUnreadFor(ticket, username) {
   ticket.readBy = Array.isArray(ticket.readBy) ? ticket.readBy : [];
   ticket.readBy = ticket.readBy.filter((reader) => reader !== username);
@@ -1792,6 +1809,7 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
 
     tickets.unshift(ticket);
     await writeTickets(tickets.slice(0, 200));
+    broadcastInboxUnreadCounts();
     queueTimelineEvent({
       type: 'ticket_created',
       category: 'Tickets',
@@ -1840,6 +1858,7 @@ app.delete('/api/tickets/:id', authenticateToken, requireRole('admin', 'user'), 
 
   tickets.splice(ticketIndex, 1);
   await writeTickets(tickets);
+  broadcastInboxUnreadCounts();
   res.json({ deleted: true });
 });
 
@@ -1866,6 +1885,7 @@ app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req
   markTicketReadFor(ticket, req.user.username);
   markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
   await writeTickets(tickets);
+  broadcastInboxUnreadCounts();
   queueTimelineEvent({
     type: 'ticket_status_changed',
     category: 'Tickets',
@@ -1896,6 +1916,7 @@ app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user
   markTicketReadFor(ticket, req.user.username);
   ticket.updatedAt = new Date().toISOString();
   await writeTickets(tickets);
+  broadcastInboxUnreadCounts();
   res.json({ saved: true, ticket });
 });
 
@@ -1934,6 +1955,7 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user
   markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
 
   await writeTickets(tickets);
+  broadcastInboxUnreadCounts();
   queueTimelineEvent({
     type: 'ticket_replied',
     category: 'Tickets',
@@ -1945,10 +1967,141 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user
   res.json({ saved: true, ticket });
 });
 
+function verifyWebSocketToken(token) {
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const decoded = jwt.verify(token, AUTH_TOKEN_SECRET);
+    return {
+      username: decoded.username,
+      role: decoded.role === 'admin' ? 'admin' : 'user'
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sendWsMessage(client, payload) {
+  if (client.readyState === WebSocket.OPEN && client.user) {
+    client.send(JSON.stringify(payload));
+  }
+}
+
+function broadcastToAdmins(payload) {
+  wsClients.forEach((client) => {
+    if (client.user?.role === 'admin') {
+      sendWsMessage(client, payload);
+    }
+  });
+}
+
+function broadcastTimelineEvent(event) {
+  broadcastToAdmins({
+    type: 'timeline_event',
+    event
+  });
+}
+
+async function sendInboxUnreadCount(client) {
+  if (!client.user) {
+    return;
+  }
+
+  const count = await getUnreadTicketCountFor(client.user.username);
+  sendWsMessage(client, {
+    type: 'inbox_unread',
+    count
+  });
+}
+
+async function broadcastInboxUnreadCounts() {
+  await Promise.all([...wsClients]
+    .filter((client) => client.user)
+    .map((client) => sendInboxUnreadCount(client)));
+}
+
+function hasAdminWsClients() {
+  return [...wsClients].some((client) => client.user?.role === 'admin');
+}
+
+const wss = new WebSocketServer({
+  server,
+  path: '/ws'
+});
+
+wss.on('connection', (socket, request) => {
+  const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+  socket.user = verifyWebSocketToken(url.searchParams.get('token'));
+  wsClients.add(socket);
+
+  if (socket.user) {
+    sendWsMessage(socket, {
+      type: 'live_status',
+      status: 'connected',
+      role: socket.user.role
+    });
+    sendInboxUnreadCount(socket);
+  } else {
+    socket.send(JSON.stringify({
+      type: 'auth_required'
+    }));
+  }
+
+  socket.on('message', (message) => {
+    try {
+      const data = JSON.parse(String(message));
+
+      if (data.type === 'auth' && !socket.user) {
+        socket.user = verifyWebSocketToken(data.token);
+
+        if (!socket.user) {
+          socket.close(1008, 'Unauthorized');
+          return;
+        }
+
+        sendWsMessage(socket, {
+          type: 'live_status',
+          status: 'connected',
+          role: socket.user.role
+        });
+        sendInboxUnreadCount(socket);
+      }
+    } catch {
+      // Ignore malformed live messages.
+    }
+  });
+
+  socket.on('close', () => {
+    wsClients.delete(socket);
+  });
+});
+
+setInterval(async () => {
+  try {
+    if (hasAdminWsClients()) {
+      const metrics = await getServerMetricsSnapshot();
+      broadcastToAdmins({
+        type: 'metrics',
+        metrics
+      });
+      broadcastToAdmins({
+        type: 'alerts',
+        alerts: metrics.alerts || [],
+        activeCount: getActiveAlertCount()
+      });
+    }
+
+    await broadcastInboxUnreadCounts();
+  } catch (error) {
+    console.warn('[WS] Live update failed:', error.message);
+  }
+}, 3000);
 
 
 // Start Server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`================================================================`);
   console.log(`  AI Ops Assistant Server is active!`);
   console.log(`  Local Endpoint: http://localhost:${PORT}`);
