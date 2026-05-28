@@ -433,6 +433,11 @@ const securityAiSummary = document.getElementById('security-ai-summary');
 const securityAiRisks = document.getElementById('security-ai-risks');
 const securityAiHardening = document.getElementById('security-ai-hardening');
 const securityAiPriority = document.getElementById('security-ai-priority');
+const simulationContextBanner = document.getElementById('simulation-context-banner');
+const simulationContextLevel = document.getElementById('simulation-context-level');
+const simulationContextTitle = document.getElementById('simulation-context-title');
+const simulationContextSummary = document.getElementById('simulation-context-summary');
+const changeSimulationBtn = document.getElementById('change-simulation-btn');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
@@ -496,11 +501,14 @@ const historyList = document.getElementById('history-list');
 const historyContent = document.getElementById('history-content');
 const toggleHistoryBtn = document.getElementById('toggle-history-btn');
 const clearLocalHistoryBtn = document.getElementById('clear-local-history-btn');
-const feedbackPanel = document.getElementById('feedback-panel');
-const feedbackType = document.getElementById('feedback-type');
-const feedbackMessage = document.getElementById('feedback-message');
-const submitFeedbackBtn = document.getElementById('submit-feedback-btn');
-const feedbackStatus = document.getElementById('feedback-status');
+const ticketsPanel = document.getElementById('tickets-panel');
+const ticketsTitle = document.getElementById('tickets-title');
+const ticketType = document.getElementById('ticket-type');
+const ticketMessage = document.getElementById('ticket-message');
+const submitTicketBtn = document.getElementById('submit-ticket-btn');
+const ticketStatus = document.getElementById('ticket-status');
+const ticketList = document.getElementById('ticket-list');
+const refreshTicketsBtn = document.getElementById('refresh-tickets-btn');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
@@ -1123,6 +1131,15 @@ function renderPlainList(element, items) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderSecurityAlerts(alerts) {
   if (!securityAlerts) {
     return;
@@ -1414,6 +1431,26 @@ function selectSimulationScenario(scenarioId) {
   }
 }
 
+function updateSimulationContextBanner(scenario) {
+  const showBanner = Boolean(scenario) && isSimulationModeEnabled();
+  simulationContextBanner?.classList.toggle('hidden', !showBanner);
+
+  if (!showBanner) {
+    return;
+  }
+
+  if (simulationContextLevel) {
+    simulationContextLevel.textContent = scenario.level;
+    simulationContextLevel.className = `badge ${getSimulationBadgeClass(scenario.level)}`;
+  }
+
+  setMetricText(simulationContextTitle, scenario.title);
+  setMetricText(
+    simulationContextSummary,
+    `Simulated state only: ${scenario.summary} CPU ${scenario.metrics.cpu}%, RAM ${scenario.metrics.ram}%, Disk ${scenario.metrics.disk}%, Latency ${scenario.metrics.latency} ms.`
+  );
+}
+
 async function analyzeSelectedSimulationScenario() {
   if (!selectedSimulationScenario) {
     return;
@@ -1431,6 +1468,7 @@ Simulated API latency: ${scenario.metrics.latency} ms
 ${scenario.log}`;
 
   await analyzeCurrentInput();
+  updateSimulationContextBanner(scenario);
 }
 
 function updateOperationalMetrics(metrics) {
@@ -1722,6 +1760,10 @@ function setSimulationMode(isEnabled, options = {}) {
   simulationLabBtn?.classList.toggle('hidden', !isEnabled);
   simulationActiveBadge?.classList.toggle('hidden', !isEnabled);
 
+  if (!isEnabled) {
+    updateSimulationContextBanner(null);
+  }
+
   if (!navigate) {
     return;
   }
@@ -1908,10 +1950,18 @@ function applyRoleAccess() {
   historyContent?.classList.add('hidden');
   document.getElementById('history-panel')?.classList.toggle('hidden', !isAdmin);
   clearLocalHistoryBtn?.classList.toggle('hidden', !isAdmin);
-  feedbackPanel?.classList.toggle('hidden', !hasToken);
+  ticketsPanel?.classList.toggle('hidden', !hasToken);
+
+  if (ticketsTitle) {
+    ticketsTitle.textContent = isAdmin ? 'Admin Inbox' : 'Support / Feedback';
+  }
 
   if (!isAdmin && ['dashboard', 'security'].includes(getSavedView())) {
     showAnalyzerView();
+  }
+
+  if (hasToken) {
+    loadTickets();
   }
 }
 
@@ -1998,7 +2048,21 @@ themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
-submitFeedbackBtn?.addEventListener('click', submitFeedbackToAdmin);
+submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
+refreshTicketsBtn?.addEventListener('click', loadTickets);
+changeSimulationBtn?.addEventListener('click', showSimulationLab);
+ticketList?.addEventListener('change', (event) => {
+  const ticketId = event.target?.dataset?.ticketStatus;
+  if (ticketId) {
+    updateTicketStatus(ticketId, event.target.value);
+  }
+});
+ticketList?.addEventListener('click', (event) => {
+  const ticketId = event.target?.dataset?.ticketReplyBtn;
+  if (ticketId) {
+    replyToTicket(ticketId);
+  }
+});
 clearLocalHistoryBtn?.addEventListener('click', () => {
   if (historyList) {
     historyList.innerHTML = '<li>Local history cleared for this browser view. Backend history was not deleted.</li>';
@@ -2444,30 +2508,98 @@ async function runQuickCheck(type) {
   }
 }
 
-async function submitFeedbackToAdmin() {
-  const message = feedbackMessage?.value.trim();
+function renderTickets(tickets = []) {
+  if (!ticketList) {
+    return;
+  }
+
+  ticketList.innerHTML = '';
+
+  if (!tickets.length) {
+    ticketList.innerHTML = '<p class="feedback-status">No messages yet.</p>';
+    return;
+  }
+
+  tickets.forEach((ticket) => {
+    const item = document.createElement('div');
+    item.className = 'ticket-item';
+    const replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+    const repliesHtml = replies.length
+      ? `<div class="ticket-replies">${replies.map((reply) => `<p><strong>${escapeHtml(reply.from)}:</strong> ${escapeHtml(reply.message)}</p>`).join('')}</div>`
+      : '<p class="ticket-muted">No admin reply yet.</p>';
+    const adminControls = isAdminUser()
+      ? `<div class="ticket-admin-controls">
+          <select data-ticket-status="${ticket.id}">
+            ${['New', 'In progress', 'Resolved'].map((status) => `<option value="${status}" ${ticket.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+          </select>
+          <input type="text" data-ticket-reply="${ticket.id}" placeholder="Short admin reply">
+          <button class="btn-secondary" data-ticket-reply-btn="${ticket.id}">Reply</button>
+        </div>`
+      : '';
+
+    item.innerHTML = `
+      <div class="ticket-item-header">
+        <span class="badge badge-medium">${escapeHtml(ticket.status || 'New')}</span>
+        <strong>${escapeHtml(ticket.type || 'feedback')}</strong>
+        <span>${escapeHtml(ticket.from || 'user')} · ${new Date(ticket.time).toLocaleString()}</span>
+      </div>
+      <p>${escapeHtml(ticket.message || '')}</p>
+      ${repliesHtml}
+      ${adminControls}
+    `;
+    ticketList.appendChild(item);
+  });
+}
+
+async function loadTickets() {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  try {
+    const endpoint = isAdminUser() ? '/tickets/admin' : '/tickets/my';
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Tickets failed with ${response.status}`);
+    }
+
+    renderTickets(await response.json());
+  } catch (error) {
+    if (ticketList) {
+      ticketList.innerHTML = '<p class="feedback-status">Could not load messages right now.</p>';
+    }
+  }
+}
+
+async function submitTicketToAdmin() {
+  const message = ticketMessage?.value.trim();
 
   if (!message) {
-    if (feedbackStatus) {
-      feedbackStatus.textContent = 'Please enter a message before submitting.';
-      feedbackStatus.classList.remove('hidden');
+    if (ticketStatus) {
+      ticketStatus.textContent = 'Please enter a message before submitting.';
+      ticketStatus.classList.remove('hidden');
     }
     return;
   }
 
-  if (submitFeedbackBtn) {
-    submitFeedbackBtn.disabled = true;
+  if (submitTicketBtn) {
+    submitTicketBtn.disabled = true;
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/feedback`, {
+    const response = await fetch(`${API_BASE_URL}/tickets`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('authToken')}`
       },
       body: JSON.stringify({
-        type: feedbackType?.value || 'feedback',
+        type: ticketType?.value || 'feedback',
         message
       })
     });
@@ -2476,21 +2608,53 @@ async function submitFeedbackToAdmin() {
       throw new Error(`Feedback failed with ${response.status}`);
     }
 
-    feedbackMessage.value = '';
-    if (feedbackStatus) {
-      feedbackStatus.textContent = 'Submitted to admin.';
-      feedbackStatus.classList.remove('hidden');
+    ticketMessage.value = '';
+    if (ticketStatus) {
+      ticketStatus.textContent = 'Submitted to admin.';
+      ticketStatus.classList.remove('hidden');
     }
+    loadTickets();
   } catch (error) {
-    if (feedbackStatus) {
-      feedbackStatus.textContent = 'Could not submit feedback right now.';
-      feedbackStatus.classList.remove('hidden');
+    if (ticketStatus) {
+      ticketStatus.textContent = 'Could not submit message right now.';
+      ticketStatus.classList.remove('hidden');
     }
   } finally {
-    if (submitFeedbackBtn) {
-      submitFeedbackBtn.disabled = false;
+    if (submitTicketBtn) {
+      submitTicketBtn.disabled = false;
     }
   }
+}
+
+async function updateTicketStatus(ticketId, status) {
+  await fetch(`${API_BASE_URL}/tickets/${ticketId}/status`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+    },
+    body: JSON.stringify({ status })
+  });
+  loadTickets();
+}
+
+async function replyToTicket(ticketId) {
+  const input = document.querySelector(`[data-ticket-reply="${ticketId}"]`);
+  const message = input?.value.trim();
+
+  if (!message) {
+    return;
+  }
+
+  await fetch(`${API_BASE_URL}/tickets/${ticketId}/reply`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+    },
+    body: JSON.stringify({ message })
+  });
+  loadTickets();
 }
 
 

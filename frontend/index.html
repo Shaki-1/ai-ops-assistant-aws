@@ -67,6 +67,14 @@
 
   <!-- Main Dashboard Grid -->
   <main class="dashboard-grid" id="analyzer-view">
+    <section class="simulation-context-banner hidden" id="simulation-context-banner" aria-live="polite">
+      <div>
+        <span class="badge" id="simulation-context-level">Simulated</span>
+        <strong id="simulation-context-title">Simulation scenario</strong>
+        <p id="simulation-context-summary">This analyzer context is simulated and does not represent real server state.</p>
+      </div>
+      <button id="change-simulation-btn" class="btn-secondary">Change Scenario</button>
+    </section>
     
     <!-- LEFT PANEL: Diagnostics Input -->
     <div class="panel-column left-column">
@@ -271,19 +279,21 @@
   </div>
 </section>
 
-<section class="dashboard-panel panel-feedback" id="feedback-panel">
+<section class="dashboard-panel panel-feedback" id="tickets-panel">
   <div class="panel-header">
-    <h2>Feedback to Admin</h2>
+    <h2 id="tickets-title">Support / Feedback</h2>
+    <button class="btn-secondary panel-header-action" id="refresh-tickets-btn">Refresh</button>
   </div>
   <div class="panel-content feedback-body">
-    <select id="feedback-type" aria-label="Feedback type">
+    <select id="ticket-type" aria-label="Message type">
       <option value="ticket">Ticket</option>
       <option value="suggestion">Suggestion</option>
       <option value="feedback">Feedback</option>
     </select>
-    <textarea id="feedback-message" placeholder="Send a ticket, suggestion, or feedback note to the admin." spellcheck="true"></textarea>
-    <button id="submit-feedback-btn" class="btn-primary">Submit to Admin</button>
-    <p id="feedback-status" class="feedback-status hidden"></p>
+    <textarea id="ticket-message" placeholder="Send a ticket, suggestion, or feedback note to the admin." spellcheck="true"></textarea>
+    <button id="submit-ticket-btn" class="btn-primary">Submit to Admin</button>
+    <p id="ticket-status" class="feedback-status hidden"></p>
+    <div class="ticket-list" id="ticket-list"></div>
   </div>
 </section>
 

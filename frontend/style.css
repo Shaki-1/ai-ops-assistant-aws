@@ -304,6 +304,29 @@ body {
   margin: 0 auto;
 }
 
+.simulation-context-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--border-radius-lg);
+  padding: 1rem 1.25rem;
+}
+
+.simulation-context-banner strong {
+  color: var(--text-primary);
+  margin-left: 0.65rem;
+}
+
+.simulation-context-banner p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  margin-top: 0.35rem;
+}
+
 .dashboard-view {
   flex: 1;
   width: 100%;
@@ -1834,6 +1857,67 @@ button {
   font-size: 0.8rem;
 }
 
+.ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.ticket-item {
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 1rem;
+}
+
+.ticket-item-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.ticket-item-header strong {
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.ticket-item-header span:last-child,
+.ticket-muted {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.ticket-item > p,
+.ticket-replies p {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.ticket-replies {
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.ticket-admin-controls {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.ticket-admin-controls input {
+  min-height: var(--control-height);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-primary);
+  padding: 0.6rem 0.75rem;
+}
+
 .report-actions-wrapper {
   display: flex;
   align-items: center;
@@ -1984,6 +2068,15 @@ button {
     grid-template-columns: 1fr;
     padding: 1.25rem;
     gap: 1.5rem;
+  }
+
+  .simulation-context-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ticket-admin-controls {
+    grid-template-columns: 1fr;
   }
 
   .dashboard-view {

@@ -1150,45 +1150,121 @@ app.get('/api/history', authenticateToken, requireAdmin, async (req, res) => {
   }
 });
 
-const FEEDBACK_FILE = './feedback.json';
+const TICKETS_DIR = './data';
+const TICKETS_FILE = './data/tickets.json';
+const TICKET_STATUSES = ['New', 'In progress', 'Resolved'];
 
-app.post('/api/feedback', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+async function readTickets() {
+  try {
+    const raw = await fs.promises.readFile(TICKETS_FILE, 'utf8');
+    const tickets = JSON.parse(raw);
+    return Array.isArray(tickets) ? tickets : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeTickets(tickets) {
+  await fs.promises.mkdir(TICKETS_DIR, { recursive: true });
+  await fs.promises.writeFile(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
+}
+
+app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const { type = 'feedback', message = '' } = req.body || {};
   const cleanMessage = String(message).trim();
 
   if (!cleanMessage) {
     return res.status(400).json({
-      error: 'Feedback message is required.'
+      error: 'Ticket message is required.'
     });
   }
 
   try {
-    let feedback = [];
-    try {
-      const raw = await fs.promises.readFile(FEEDBACK_FILE, 'utf8');
-      feedback = JSON.parse(raw);
-    } catch {
-      feedback = [];
-    }
-
-    feedback.unshift({
+    const tickets = await readTickets();
+    const ticket = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       time: new Date().toISOString(),
       type: String(type).slice(0, 40),
       message: cleanMessage.slice(0, 2000),
       from: req.user.username,
-      role: req.user.role
-    });
+      role: req.user.role,
+      status: 'New',
+      replies: []
+    };
 
-    feedback = feedback.slice(0, 100);
-    await fs.promises.writeFile(FEEDBACK_FILE, JSON.stringify(feedback, null, 2), 'utf8');
+    tickets.unshift(ticket);
+    await writeTickets(tickets.slice(0, 200));
 
-    res.json({ saved: true });
+    res.json({ saved: true, ticket });
   } catch (error) {
-    console.error('[FEEDBACK ERROR]', error);
+    console.error('[TICKET ERROR]', error);
     res.status(500).json({
-      error: 'Could not save feedback.'
+      error: 'Could not save ticket.'
     });
   }
+});
+
+app.get('/api/tickets/my', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  const tickets = await readTickets();
+  res.json(tickets.filter((ticket) => ticket.from === req.user.username));
+});
+
+app.get('/api/tickets/admin', authenticateToken, requireAdmin, async (req, res) => {
+  res.json(await readTickets());
+});
+
+app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+  const { status } = req.body || {};
+
+  if (!TICKET_STATUSES.includes(status)) {
+    return res.status(400).json({
+      error: 'Invalid ticket status.'
+    });
+  }
+
+  const tickets = await readTickets();
+  const ticket = tickets.find((item) => item.id === req.params.id);
+
+  if (!ticket) {
+    return res.status(404).json({
+      error: 'Ticket not found.'
+    });
+  }
+
+  ticket.status = status;
+  ticket.updatedAt = new Date().toISOString();
+  await writeTickets(tickets);
+  res.json({ saved: true, ticket });
+});
+
+app.post('/api/tickets/:id/reply', authenticateToken, requireAdmin, async (req, res) => {
+  const message = String(req.body?.message || '').trim();
+
+  if (!message) {
+    return res.status(400).json({
+      error: 'Reply message is required.'
+    });
+  }
+
+  const tickets = await readTickets();
+  const ticket = tickets.find((item) => item.id === req.params.id);
+
+  if (!ticket) {
+    return res.status(404).json({
+      error: 'Ticket not found.'
+    });
+  }
+
+  ticket.replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+  ticket.replies.push({
+    time: new Date().toISOString(),
+    from: req.user.username,
+    message: message.slice(0, 1200)
+  });
+  ticket.updatedAt = new Date().toISOString();
+
+  await writeTickets(tickets);
+  res.json({ saved: true, ticket });
 });
 
 
