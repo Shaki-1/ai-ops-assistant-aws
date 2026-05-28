@@ -45,12 +45,12 @@ variable "admin_username" {
   type = string
 }
 
-variable "admin_password_hash" {
-  type = string
+variable "admin_password" {
+  type      = string
+  sensitive = true
 }
 
 variable "auth_token_secret" {
   type = string
 }
-
 
