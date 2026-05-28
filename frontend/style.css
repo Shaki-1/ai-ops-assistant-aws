@@ -606,6 +606,7 @@ body {
 .badge-status-progress { background-color: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.34); }
 .badge-status-resolved { background-color: rgba(59, 130, 246, 0.12); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.32); }
 .badge-status-default { background-color: rgba(148, 163, 184, 0.12); color: var(--text-secondary); border: 1px solid rgba(148, 163, 184, 0.28); }
+.badge-unread { background-color: rgba(59, 130, 246, 0.14); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.34); }
 .badge-critical { 
   background-color: var(--color-critical); 
   color: white; 
@@ -2023,6 +2024,17 @@ button {
 
 .ticket-item-header .btn-danger-light {
   margin-left: auto;
+}
+
+.ticket-read-state {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-left: auto;
+}
+
+.ticket-read-state + .btn-danger-light {
+  margin-left: 0;
 }
 
 .ticket-item-header strong {

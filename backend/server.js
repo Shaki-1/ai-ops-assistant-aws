@@ -1169,6 +1169,33 @@ async function writeTickets(tickets) {
   await fs.promises.writeFile(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
 }
 
+function canViewTicket(ticket, user) {
+  return user.role === 'admin' ||
+    ticket.from === user.username ||
+    ticket.targetUser === user.username;
+}
+
+function markTicketUnreadFor(ticket, username) {
+  ticket.readBy = Array.isArray(ticket.readBy) ? ticket.readBy : [];
+  ticket.readBy = ticket.readBy.filter((reader) => reader !== username);
+}
+
+function markTicketReadFor(ticket, username) {
+  ticket.readBy = Array.isArray(ticket.readBy) ? ticket.readBy : [];
+
+  if (!ticket.readBy.includes(username)) {
+    ticket.readBy.push(username);
+  }
+}
+
+function getTicketCounterparty(ticket, actorUsername) {
+  if (ticket.from && ticket.from !== actorUsername) {
+    return ticket.from;
+  }
+
+  return ticket.targetUser || (actorUsername === ADMIN_USERNAME ? USER_USERNAME : ADMIN_USERNAME);
+}
+
 app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const { type = 'feedback', message = '' } = req.body || {};
   const cleanMessage = String(message).trim();
@@ -1188,8 +1215,9 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
       message: cleanMessage.slice(0, 2000),
       from: req.user.username,
       role: req.user.role,
-      targetUser: req.user.role === 'admin' ? USER_USERNAME : 'admin',
+      targetUser: req.user.role === 'admin' ? USER_USERNAME : ADMIN_USERNAME,
       status: 'New',
+      readBy: [req.user.username],
       replies: []
     };
 
@@ -1207,10 +1235,7 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
 
 app.get('/api/tickets/my', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const tickets = await readTickets();
-  res.json(tickets.filter((ticket) => (
-    ticket.from === req.user.username ||
-    ticket.targetUser === req.user.username
-  )));
+  res.json(tickets.filter((ticket) => canViewTicket(ticket, req.user)));
 });
 
 app.get('/api/tickets/admin', authenticateToken, requireAdmin, async (req, res) => {
@@ -1261,6 +1286,30 @@ app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req
 
   ticket.status = status;
   ticket.updatedAt = new Date().toISOString();
+  markTicketReadFor(ticket, req.user.username);
+  markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
+  await writeTickets(tickets);
+  res.json({ saved: true, ticket });
+});
+
+app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  const tickets = await readTickets();
+  const ticket = tickets.find((item) => item.id === req.params.id);
+
+  if (!ticket) {
+    return res.status(404).json({
+      error: 'Ticket not found.'
+    });
+  }
+
+  if (!canViewTicket(ticket, req.user)) {
+    return res.status(403).json({
+      error: 'You can only mark visible tickets as read.'
+    });
+  }
+
+  markTicketReadFor(ticket, req.user.username);
+  ticket.updatedAt = new Date().toISOString();
   await writeTickets(tickets);
   res.json({ saved: true, ticket });
 });
@@ -1290,6 +1339,8 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireAdmin, async (req, 
     message: message.slice(0, 1200)
   });
   ticket.updatedAt = new Date().toISOString();
+  markTicketReadFor(ticket, req.user.username);
+  markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
 
   await writeTickets(tickets);
   res.json({ saved: true, ticket });

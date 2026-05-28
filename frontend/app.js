@@ -411,7 +411,6 @@ const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const ACTIVITY_EVENTS = ['mousemove', 'click', 'keypress', 'scroll', 'touchstart'];
 const INBOX_REFRESH_MS = 10000;
 const INBOX_NOTIFICATION_REFRESH_MS = 15 * 60 * 1000;
-const TICKET_SEEN_KEY = 'aiOpsTicketLastSeen';
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -1938,6 +1937,7 @@ function showAnalyzerView(options = {}) {
 
 function returnHomeToAnalyzer() {
   cancelActiveAnalysis();
+  resetAnalysisResultPanel();
   showAnalyzerView();
 }
 
@@ -2069,6 +2069,34 @@ function resetAnalysisLoadingState() {
   analysisLoadingState?.classList.add('hidden');
   analysisEmptyState?.classList.toggle('hidden', Boolean(activeAnalysisResult));
   analysisResultsPanel?.classList.toggle('hidden', !activeAnalysisResult);
+
+  if (analyzeBtn) {
+    analyzeBtn.disabled = false;
+  }
+}
+
+function resetAnalysisResultPanel() {
+  activeAnalysisResult = null;
+  currentActiveLog = '';
+  selectedSimulationScenario = null;
+  updateSimulationContextBanner(null);
+
+  analysisLoadingState?.classList.add('hidden');
+  analysisResultsPanel?.classList.add('hidden');
+  analysisEmptyState?.classList.remove('hidden');
+  severityContainer?.classList.add('hidden');
+  commandsPanel?.classList.add('hidden');
+  reportPanel?.classList.add('hidden');
+  commandsLoadingState?.classList.add('hidden');
+  reportLoadingState?.classList.add('hidden');
+
+  if (commandsContent) {
+    commandsContent.classList.add('hidden');
+  }
+
+  if (reportContent) {
+    reportContent.classList.add('hidden');
+  }
 
   if (analyzeBtn) {
     analyzeBtn.disabled = false;
@@ -2311,9 +2339,15 @@ ticketList?.addEventListener('change', (event) => {
 ticketList?.addEventListener('click', (event) => {
   const replyTicketId = event.target?.dataset?.ticketReplyBtn;
   const deleteTicketId = event.target?.dataset?.ticketDelete;
+  const readTicketId = event.target?.dataset?.ticketRead;
 
   if (replyTicketId) {
     replyToTicket(replyTicketId);
+    return;
+  }
+
+  if (readTicketId) {
+    markTicketRead(readTicketId);
     return;
   }
 
@@ -2883,72 +2917,19 @@ function exportGovernanceHistory() {
   }
 }
 
-function getTicketSeenMap() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(TICKET_SEEN_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function getTicketSeenId() {
-  return `${getCurrentUsername()}:${getCurrentRole()}`;
-}
-
-function getLastTicketSeenTime() {
-  return getTicketSeenMap()[getTicketSeenId()] || '';
-}
-
-function markInboxSeen(tickets = []) {
-  const seenMap = getTicketSeenMap();
-  const newestRelevantTime = tickets.reduce((latest, ticket) => {
-    const relevantTime = getTicketRelevantUpdateTime(ticket);
-    return relevantTime > latest ? relevantTime : latest;
-  }, new Date().toISOString());
-
-  seenMap[getTicketSeenId()] = newestRelevantTime;
-  localStorage.setItem(TICKET_SEEN_KEY, JSON.stringify(seenMap));
-  updateInboxNotificationBadge(0);
-}
-
-function getTicketRelevantUpdateTime(ticket) {
-  const replies = Array.isArray(ticket.replies) ? ticket.replies : [];
-  const timestamps = [ticket.updatedAt, ticket.time, ...replies.map((reply) => reply.time)]
-    .filter(Boolean)
-    .map((value) => new Date(value).getTime())
-    .filter(Number.isFinite);
-
-  if (!timestamps.length) {
-    return '';
-  }
-
-  return new Date(Math.max(...timestamps)).toISOString();
-}
-
-function isUnreadTicketUpdate(ticket, lastSeenTime) {
-  const lastSeenMs = lastSeenTime ? new Date(lastSeenTime).getTime() : 0;
-  const ticketTimeMs = ticket.time ? new Date(ticket.time).getTime() : 0;
-  const replies = Array.isArray(ticket.replies) ? ticket.replies : [];
+function isTicketUnread(ticket) {
   const currentUsername = getCurrentUsername();
-  const isAdmin = isAdminUser();
+  const readBy = Array.isArray(ticket.readBy) ? ticket.readBy : null;
 
-  if (isAdmin) {
-    const newUserTicket = ticket.from !== currentUsername && ticketTimeMs > lastSeenMs;
-    const newUserReply = replies.some((reply) => reply.from !== currentUsername && new Date(reply.time).getTime() > lastSeenMs);
-    return newUserTicket || newUserReply;
+  if (readBy) {
+    return !readBy.includes(currentUsername);
   }
 
-  const updatedAtMs = ticket.updatedAt ? new Date(ticket.updatedAt).getTime() : 0;
-  const newAdminTicket = ticket.from !== currentUsername && ticketTimeMs > lastSeenMs;
-  const newAdminReply = replies.some((reply) => reply.from !== currentUsername && new Date(reply.time).getTime() > lastSeenMs);
-  const adminStatusUpdate = ticket.from === currentUsername && updatedAtMs > lastSeenMs;
-  return newAdminTicket || newAdminReply || adminStatusUpdate;
+  return ticket.from !== currentUsername;
 }
 
 function getUnreadTicketCount(tickets = []) {
-  const lastSeenTime = getLastTicketSeenTime();
-  return tickets.filter((ticket) => isUnreadTicketUpdate(ticket, lastSeenTime)).length;
+  return tickets.filter(isTicketUnread).length;
 }
 
 function updateInboxNotificationBadge(count) {
@@ -3054,12 +3035,18 @@ function renderTickets(tickets = []) {
     const deleteControl = canDeleteTicket
       ? `<button class="btn-secondary btn-danger-light" data-ticket-delete="${ticket.id}">Delete</button>`
       : '';
+    const unread = isTicketUnread(ticket);
+    const readControl = unread
+      ? `<button class="btn-secondary" data-ticket-read="${ticket.id}">Mark as read</button>`
+      : '<span class="ticket-read-state">Read</span>';
 
     item.innerHTML = `
       <div class="ticket-item-header">
         <span class="badge ${getTicketStatusBadgeClass(ticket.status)}">${escapeHtml(ticket.status || 'New')}</span>
+        ${unread ? '<span class="badge badge-unread">Unread</span>' : ''}
         <strong>${escapeHtml(ticket.type || 'feedback')}</strong>
         <span>${escapeHtml(ticket.from || 'user')} · ${new Date(ticket.time).toLocaleString()}</span>
+        ${readControl}
         ${deleteControl}
       </div>
       <p>${escapeHtml(ticket.message || '')}</p>
@@ -3078,12 +3065,7 @@ async function loadTickets() {
   try {
     const tickets = await fetchTicketsForCurrentRole();
     renderTickets(tickets);
-
-    if (!inboxView?.classList.contains('hidden')) {
-      markInboxSeen(tickets);
-    } else {
-      updateInboxNotificationBadge(getUnreadTicketCount(tickets));
-    }
+    updateInboxNotificationBadge(getUnreadTicketCount(tickets));
   } catch (error) {
     if (ticketList) {
       ticketList.innerHTML = '<p class="feedback-status">Could not load messages right now.</p>';
@@ -3173,6 +3155,29 @@ async function replyToTicket(ticketId) {
   });
   await loadTickets();
   refreshInboxNotificationStatus();
+}
+
+async function markTicketRead(ticketId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/read`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Mark read failed with ${response.status}`);
+    }
+
+    await loadTickets();
+    refreshInboxNotificationStatus();
+  } catch (error) {
+    if (ticketStatus) {
+      ticketStatus.textContent = 'Could not mark ticket as read right now.';
+      ticketStatus.classList.remove('hidden');
+    }
+  }
 }
 
 async function deleteTicket(ticketId) {
