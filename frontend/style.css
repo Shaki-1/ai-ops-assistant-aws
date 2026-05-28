@@ -410,6 +410,14 @@ body {
   gap: 2.25rem;
 }
 
+.dashboard-side-nav {
+  margin-top: -1.25rem;
+}
+
+.dashboard-side-nav .header-nav-btn {
+  width: 100%;
+}
+
 .left-column {
   /* Fix width of the side column */
 }

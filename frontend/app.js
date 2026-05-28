@@ -21,6 +21,10 @@ const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const analyzerView = document.getElementById('analyzer-view');
 const metricsDashboardView = document.getElementById('metrics-dashboard-view');
 
+const VIEW_STORAGE_KEY = 'aiOpsActiveView';
+const DEFAULT_VIEW = 'analyzer';
+const VALID_VIEWS = new Set(['analyzer', 'dashboard']);
+
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
 }
@@ -49,6 +53,7 @@ loginForm.addEventListener('submit', async (event) => {
     localStorage.setItem('authToken', data.token);
     loginScreen.classList.add('hidden');
     startAuthenticatedSession();
+    restoreSavedView();
 
   } catch (error) {
     loginError.classList.remove('hidden');
@@ -58,7 +63,9 @@ loginForm.addEventListener('submit', async (event) => {
 logoutBtn.addEventListener('click', () => {
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
-  window.location.reload();
+  localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  showAnalyzerView({ persist: false });
+  loginScreen.classList.remove('hidden');
 });
 
 // Host Configuration
@@ -869,7 +876,7 @@ async function pollServerHealth() {
       pulseDot.style.backgroundColor = 'var(--color-success)';
     }
     if (statusText) {
-      statusText.textContent = 'Server API Connected';
+      statusText.textContent = 'Server Connected';
       statusText.style.color = 'var(--color-success)';
     }
 
@@ -918,7 +925,7 @@ async function pollServerHealth() {
       pulseDot.style.backgroundColor = 'var(--color-warning)';
     }
     if (statusText) {
-      statusText.textContent = 'Demo Mode (Offline)';
+      statusText.textContent = 'Server Offline';
       statusText.style.color = 'var(--color-warning)';
     }
 
@@ -947,14 +954,37 @@ function updateHeaderClock() {
   headerClock.textContent = clock.toLocaleTimeString('en-US', { hour12: false });
 }
 
-function showMetricsDashboard() {
+function getSavedView() {
+  const savedView = localStorage.getItem(VIEW_STORAGE_KEY);
+  return VALID_VIEWS.has(savedView) ? savedView : DEFAULT_VIEW;
+}
+
+function restoreSavedView() {
   if (!localStorage.getItem('authToken')) {
     return;
   }
 
+  if (getSavedView() === 'dashboard') {
+    showMetricsDashboard({ persist: false });
+  } else {
+    showAnalyzerView({ persist: false });
+  }
+}
+
+function showMetricsDashboard(options = {}) {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  const { persist = true } = options;
+
   analyzerView?.classList.add('hidden');
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'dashboard');
+  }
 
   requestAnimationFrame(() => {
     if (metricsCharts) {
@@ -965,10 +995,16 @@ function showMetricsDashboard() {
   });
 }
 
-function showAnalyzerView() {
+function showAnalyzerView(options = {}) {
+  const { persist = true } = options;
+
   metricsDashboardView?.classList.add('hidden');
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  }
 }
 
 function applyTheme(theme) {
@@ -1048,6 +1084,7 @@ function stopAuthenticatedSession() {
 }
 
 startAuthenticatedSession();
+restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
 
 // ==========================================

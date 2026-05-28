@@ -102,9 +102,15 @@ chmod 600 /home/ec2-user/.ssh/authorized_keys
 
 
 
-certbot --nginx \
-  --non-interactive \
-  --agree-tos \
-  --redirect \
-  -m admin@shaki-aiops.duckdns.org \
-  -d ${duckdns_domain}.duckdns.org
+CERT_PATH="/etc/letsencrypt/live/${duckdns_domain}.duckdns.org/fullchain.pem"
+
+if [ -f "$CERT_PATH" ]; then
+  echo "Existing certificate found at $CERT_PATH. Skipping Certbot."
+else
+  certbot --nginx \
+    --non-interactive \
+    --agree-tos \
+    --redirect \
+    -m admin@${duckdns_domain}.duckdns.org \
+    -d ${duckdns_domain}.duckdns.org || echo "Certbot failed or rate-limited. HTTP site remains available."
+fi

@@ -46,20 +46,16 @@
         <h1>AI Ops Assistant</h1>
         <span class="version-badge">MVP v1.0</span>
       </button>
-      <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
     </div>
-    
-    <div class="header-status">
+
+    <div class="header-actions">
       <div class="status-indicator">
         <span class="pulse-dot"></span>
-        <span class="status-text">Server API Connected</span>
+        <span class="status-text">Server Connected</span>
       </div>
       <div class="system-time">
         <span id="header-clock">--:--:--</span>
       </div>
-    </div>
-
-    <div class="header-actions">
       <button id="theme-toggle-btn" class="btn-secondary header-action-btn" aria-pressed="false">Light Mode</button>
       <button id="logout-btn" class="btn-secondary header-action-btn">Logout</button>
     </div>
@@ -68,10 +64,76 @@
   <!-- Main Dashboard Grid -->
   <main class="dashboard-grid" id="analyzer-view">
     
-    <!-- LEFT PANEL: Diagnostics Input & Host Health -->
+    <!-- LEFT PANEL: Diagnostics Input -->
     <div class="panel-column left-column">
-      
-      <!-- Section 1: Server Health Monitor -->
+
+      <!-- Section 1: Log Analyzer Input -->
+      <section class="dashboard-panel panel-analyzer" aria-labelledby="analyzer-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <h2 id="analyzer-title">Log Analyzer Input</h2>
+        </div>
+
+        <div class="analyzer-body">
+          <div class="analyzer-intro">
+            <h3>Paste logs or command output</h3>
+            <p>Add syslog, journalctl, web server errors, auth logs, or terminal output for AI-assisted troubleshooting.</p>
+          </div>
+
+          <div class="demo-logs-selector">
+            <label for="demo-select">Load Sample System Log:</label>
+            <div class="select-wrapper">
+              <select id="demo-select">
+                <option value="" disabled selected>-- Select a standard log template --</option>
+                <option value="nginx-502">Nginx 502 Bad Gateway Error</option>
+                <option value="ssh-bruteforce">SSH Brute-Force Scanning Attack</option>
+                <option value="linux-oom">Linux Kernel Out-of-Memory (OOM) Kill</option>
+                <option value="apache-forbidden">Apache 403 Directory Listing Forbidden</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="textarea-container">
+            <label for="log-input" class="sr-only">Paste system or application logs here</label>
+            <textarea
+              id="log-input"
+              placeholder="Paste logs or command output here. Examples: journalctl excerpts, Nginx/Apache errors, SSH auth failures, disk or memory command output, stack traces, or service status messages."
+              spellcheck="false"
+            ></textarea>
+            <button id="clear-input-btn" class="btn-clear" title="Clear log content">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="clear-icon">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <button id="analyze-btn" class="btn-primary">
+            <span>Analyze System Logs</span>
+          </button>
+
+          <div class="quick-actions">
+            <button class="btn-secondary" onclick="runQuickCheck('nginx')">Check Nginx</button>
+            <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
+            <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
+            <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+
+    <!-- RIGHT PANEL: Health, Dashboard Navigation, and Outputs -->
+    <div class="panel-column right-column">
+
+      <!-- Section 2: Server Health Monitor -->
       <section class="dashboard-panel panel-health" aria-labelledby="health-title">
         <div class="panel-header">
           <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -118,71 +180,9 @@
         </div>
       </section>
 
-      <!-- Section 2: Log Analyzer Input -->
-      <section class="dashboard-panel panel-analyzer" aria-labelledby="analyzer-title">
-        <div class="panel-header">
-          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-            <polyline points="10 9 9 9 8 9"/>
-          </svg>
-          <h2 id="analyzer-title">Log Analyzer Input</h2>
-        </div>
-
-        <div class="analyzer-body">
-          <div class="analyzer-intro">
-            <h3>Paste logs or command output</h3>
-            <p>Add syslog, journalctl, web server errors, auth logs, or terminal output for AI-assisted troubleshooting.</p>
-          </div>
-
-          <div class="demo-logs-selector">
-            <label for="demo-select">Load Sample System Log:</label>
-            <div class="select-wrapper">
-              <select id="demo-select">
-                <option value="" disabled selected>-- Select a standard log template --</option>
-                <option value="nginx-502">Nginx 502 Bad Gateway Error</option>
-                <option value="ssh-bruteforce">SSH Brute-Force Scanning Attack</option>
-                <option value="linux-oom">Linux Kernel Out-of-Memory (OOM) Kill</option>
-                <option value="apache-forbidden">Apache 403 Directory Listing Forbidden</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="textarea-container">
-            <label for="log-input" class="sr-only">Paste system or application logs here</label>
-            <textarea 
-              id="log-input" 
-              placeholder="Paste logs or command output here. Examples: journalctl excerpts, Nginx/Apache errors, SSH auth failures, disk or memory command output, stack traces, or service status messages."
-              spellcheck="false"
-            ></textarea>
-            <button id="clear-input-btn" class="btn-clear" title="Clear log content">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="clear-icon">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-
-          <button id="analyze-btn" class="btn-primary">
-            <span>Analyze System Logs</span>
-          </button>
-
-          <div class="quick-actions">
-            <button class="btn-secondary" onclick="runQuickCheck('nginx')">Check Nginx</button>
-            <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
-            <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
-            <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
-          </div>
-
-        </div>
-      </section>
-
-    </div>
-
-    <!-- RIGHT PANEL: Interactive Outputs (Tabs or Multi-Section display) -->
-    <div class="panel-column right-column">
+      <div class="dashboard-side-nav">
+        <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
+      </div>
       
       <!-- Section 3: AI Troubleshooting Result -->
       <section class="dashboard-panel panel-result" aria-labelledby="result-title">
