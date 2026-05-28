@@ -53,6 +53,58 @@ const ALERT_THRESHOLDS = {
   aiFailuresWarning: 0
 };
 
+const TIMELINE_DIR = './data';
+const TIMELINE_FILE = './data/timeline.json';
+
+async function readTimelineEvents() {
+  try {
+    const raw = await fs.promises.readFile(TIMELINE_FILE, 'utf8');
+    const events = JSON.parse(raw);
+    return Array.isArray(events) ? events : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeTimelineEvents(events) {
+  await fs.promises.mkdir(TIMELINE_DIR, { recursive: true });
+  await fs.promises.writeFile(TIMELINE_FILE, JSON.stringify(events.slice(0, 500), null, 2), 'utf8');
+}
+
+async function recordTimelineEvent({
+  type = 'general',
+  category = 'General',
+  actor = 'system',
+  role = 'system',
+  severity = 'Info',
+  description = '',
+  metadata = {}
+}) {
+  try {
+    const events = await readTimelineEvents();
+    events.unshift({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+      type: String(type).slice(0, 80),
+      category: String(category).slice(0, 40),
+      actor: String(actor || 'system').slice(0, 80),
+      role: String(role || 'system').slice(0, 40),
+      severity: String(severity || 'Info').slice(0, 40),
+      description: String(description || '').slice(0, 500),
+      metadata: sanitizeObject(metadata || {})
+    });
+    await writeTimelineEvents(events);
+  } catch (error) {
+    console.warn('[TIMELINE] Could not record event:', error.message);
+  }
+}
+
+function queueTimelineEvent(event) {
+  recordTimelineEvent(event).catch((error) => {
+    console.warn('[TIMELINE] Could not queue event:', error.message);
+  });
+}
+
 // Enable CORS and JSON parsing
 app.use(cors());
 app.use(express.json());
@@ -397,6 +449,19 @@ function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
 
   alert.status = 'Resolved';
   alert.resolvedAt = resolvedAt;
+  queueTimelineEvent({
+    type: 'alert_resolved',
+    category: 'Alerts',
+    actor: 'system',
+    role: 'system',
+    severity: 'Info',
+    description: `Alert resolved: ${alert.title}.`,
+    metadata: {
+      alertType: alert.type,
+      value: alert.value,
+      threshold: alert.threshold
+    }
+  });
 }
 
 function upsertOperationalAlert(definition) {
@@ -432,6 +497,20 @@ function upsertOperationalAlert(definition) {
     threshold: definition.threshold,
     createdAt: now,
     status: 'Active'
+  });
+  queueTimelineEvent({
+    type: 'alert_triggered',
+    category: 'Alerts',
+    actor: 'system',
+    role: 'system',
+    severity: definition.severity,
+    description: `Alert triggered: ${definition.title}.`,
+    metadata: {
+      alertType: definition.type,
+      source: definition.source,
+      value: definition.value,
+      threshold: definition.threshold
+    }
   });
 
   if (operationalAlerts.length > 100) {
@@ -935,6 +1014,14 @@ app.post('/api/login', async (req, res) => {
       role: matchedUser.role
     }
   });
+  queueTimelineEvent({
+    type: 'login_success',
+    category: 'Auth',
+    actor: matchedUser.username,
+    role: matchedUser.role,
+    severity: 'Info',
+    description: `${matchedUser.role} login succeeded.`
+  });
 });
 
 app.get('/api/status', async (req, res) => {
@@ -978,6 +1065,25 @@ app.get('/api/alerts', authenticateToken, requireAdmin, async (req, res) => {
   });
 });
 
+app.get('/api/timeline', authenticateToken, requireAdmin, async (req, res) => {
+  const events = await readTimelineEvents();
+  res.json(events);
+});
+
+app.post('/api/timeline', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  const { type, category, severity, description, metadata } = req.body || {};
+  await recordTimelineEvent({
+    type: type || 'ui_event',
+    category: category || 'General',
+    actor: req.user.username,
+    role: req.user.role,
+    severity: severity || 'Info',
+    description: description || 'User interface event recorded.',
+    metadata: metadata || {}
+  });
+  res.json({ saved: true });
+});
+
 app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async (req, res) => {
   const alert = operationalAlerts.find((item) => item.id === req.params.id);
 
@@ -992,6 +1098,19 @@ app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async 
   alert.acknowledgedBy = req.user.username;
   alert.resolvedAt = alert.acknowledgedAt;
   acknowledgedAlertValues.set(alert.type, Number(alert.value || 0));
+  queueTimelineEvent({
+    type: 'alert_acknowledged',
+    category: 'Alerts',
+    actor: req.user.username,
+    role: req.user.role,
+    severity: alert.severity,
+    description: `Alert acknowledged: ${alert.title}.`,
+    metadata: {
+      alertType: alert.type,
+      value: alert.value,
+      threshold: alert.threshold
+    }
+  });
 
   res.json({ saved: true, alert });
 });
@@ -1005,6 +1124,14 @@ app.post('/api/analyze-alerts', authenticateToken, requireAdmin, async (req, res
 
     if (isDemoMode) {
       const activeAlerts = alerts.filter((alert) => alert.status === 'Active');
+      queueTimelineEvent({
+        type: 'ai_alerts_analysis',
+        category: 'AI',
+        actor: req.user.username,
+        role: req.user.role,
+        severity: activeAlerts.some((alert) => alert.severity === 'Critical') ? 'Critical' : 'Info',
+        description: `AI alert explanation requested for ${activeAlerts.length} active alert(s).`
+      });
       return res.json({
         summary: activeAlerts.length
           ? `${activeAlerts.length} active operational alert(s) need administrator review.`
@@ -1056,6 +1183,14 @@ Rules:
       cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
     }
 
+    queueTimelineEvent({
+      type: 'ai_alerts_analysis',
+      category: 'AI',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: 'Info',
+      description: `AI alert explanation requested for ${alerts.filter((alert) => alert.status === 'Active').length} active alert(s).`
+    });
     res.json(sanitizeObject(JSON.parse(cleanJson)));
   } catch (error) {
     console.error('[API ERROR /api/analyze-alerts]', error);
@@ -1071,6 +1206,14 @@ app.post('/api/analyze-metrics', authenticateToken, requireAdmin, async (req, re
     const metrics = req.body?.metrics || await getServerMetricsSnapshot();
 
     if (isDemoMode) {
+      queueTimelineEvent({
+        type: 'ai_metrics_analysis',
+        category: 'AI',
+        actor: req.user.username,
+        role: req.user.role,
+        severity: 'Info',
+        description: 'AI metrics analysis requested.'
+      });
       return res.json(getMockMetricsAnalysis(metrics));
     }
 
@@ -1115,11 +1258,127 @@ Rules:
       parsed.confidenceLevel = 'Medium';
     }
 
+    queueTimelineEvent({
+      type: 'ai_metrics_analysis',
+      category: 'AI',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: parsed.overallHealth || 'Info',
+      description: 'AI metrics analysis requested.'
+    });
     res.json(sanitizeObject(parsed));
   } catch (error) {
     console.error('[API ERROR /api/analyze-metrics]', error);
     res.status(500).json({
       error: 'Metrics analysis failed.',
+      details: error.message
+    });
+  }
+});
+
+app.post('/api/remediation-plan', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  try {
+    const analysis = req.body?.analysis || {};
+    const metrics = req.body?.metrics || null;
+    const alerts = Array.isArray(req.body?.alerts) ? req.body.alerts : [];
+
+    const fallbackPlan = {
+      immediateActions: [
+        'Confirm the affected service and scope using read-only status checks.',
+        'Preserve relevant logs and timestamps before making changes.',
+        'Apply the lowest-risk corrective action first.'
+      ],
+      verificationCommands: [
+        'systemctl status <service> --no-pager',
+        'journalctl -u <service> -n 80 --no-pager',
+        'df -h',
+        'free -h'
+      ],
+      rollbackPlan: [
+        'Document any configuration change before applying it.',
+        'Restore the previous known-good configuration if checks worsen.',
+        'Restart only the affected service after review.'
+      ],
+      riskNotes: [
+        'Review commands before running them.',
+        'Avoid destructive commands and broad restarts without approval.'
+      ],
+      escalationCriteria: [
+        'Escalate if customer-facing errors continue after first checks.',
+        'Escalate if security indicators or data exposure are suspected.'
+      ]
+    };
+
+    if (isDemoMode) {
+      queueTimelineEvent({
+        type: 'remediation_plan_generated',
+        category: 'AI',
+        actor: req.user.username,
+        role: req.user.role,
+        severity: analysis.severity || 'Info',
+        description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`
+      });
+      return res.json(fallbackPlan);
+    }
+
+    const prompt = `
+Create a defensive remediation plan for this AI Ops analysis.
+
+Analysis JSON:
+${JSON.stringify(analysis, null, 2)}
+
+Current metrics JSON:
+${JSON.stringify(metrics, null, 2)}
+
+Current active alerts JSON:
+${JSON.stringify(alerts, null, 2)}
+
+Return ONLY valid JSON with this shape:
+{
+  "immediateActions": ["..."],
+  "verificationCommands": ["..."],
+  "rollbackPlan": ["..."],
+  "riskNotes": ["..."],
+  "escalationCriteria": ["..."]
+}
+
+Rules:
+- Defensive operations only.
+- Commands must be read-only or clearly safe service checks.
+- Do not include destructive commands.
+- Include "Review before running commands" in risk notes.
+- Be concise and practical.
+`;
+
+    const aiText = await generateAIResponse(prompt, '', true);
+    let cleanJson = aiText.trim();
+
+    if (cleanJson.startsWith('```json')) {
+      cleanJson = cleanJson.replace(/^```json/, '').replace(/```$/, '').trim();
+    } else if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```/, '').replace(/```$/, '').trim();
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanJson);
+    } catch {
+      parsed = fallbackPlan;
+    }
+
+    queueTimelineEvent({
+      type: 'remediation_plan_generated',
+      category: 'AI',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: analysis.severity || 'Info',
+      description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`
+    });
+    res.json(sanitizeObject(parsed));
+  } catch (error) {
+    console.error('[API ERROR /api/remediation-plan]', error);
+    res.status(500).json({
+      error: 'Remediation plan failed.',
       details: error.message
     });
   }
@@ -1145,6 +1404,14 @@ app.post('/api/analyze-log', authenticateToken, async (req, res) => {
     const rawMock = getMockAnalysis(logText);
     const sanitizedMock = sanitizeObject(rawMock);
     apiRuntimeMetrics.successfulAIAnalyses += 1;
+    queueTimelineEvent({
+      type: 'ai_analysis_run',
+      category: 'AI',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: sanitizedMock.severity || 'Info',
+      description: `AI log analysis completed: ${String(sanitizedMock.summary || 'No summary').slice(0, 160)}`
+    });
     return res.json(sanitizedMock);
   }
 
@@ -1181,6 +1448,14 @@ const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
 
     const sanitizedResult = sanitizeObject(parsedResult);
     apiRuntimeMetrics.successfulAIAnalyses += 1;
+    queueTimelineEvent({
+      type: 'ai_analysis_run',
+      category: 'AI',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: sanitizedResult.severity || 'Info',
+      description: `AI log analysis completed: ${String(sanitizedResult.summary || 'No summary').slice(0, 160)}`
+    });
     res.json(sanitizedResult);
 
   } catch (error) {
@@ -1517,6 +1792,14 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
 
     tickets.unshift(ticket);
     await writeTickets(tickets.slice(0, 200));
+    queueTimelineEvent({
+      type: 'ticket_created',
+      category: 'Tickets',
+      actor: req.user.username,
+      role: req.user.role,
+      severity: 'Info',
+      description: `${req.user.role} created ${ticket.type}: ${ticket.message.slice(0, 140)}`
+    });
 
     res.json({ saved: true, ticket });
   } catch (error) {
@@ -1583,6 +1866,14 @@ app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req
   markTicketReadFor(ticket, req.user.username);
   markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
   await writeTickets(tickets);
+  queueTimelineEvent({
+    type: 'ticket_status_changed',
+    category: 'Tickets',
+    actor: req.user.username,
+    role: req.user.role,
+    severity: status === 'Resolved' ? 'Info' : 'Warning',
+    description: `Ticket status changed to ${status}.`
+  });
   res.json({ saved: true, ticket });
 });
 
@@ -1643,6 +1934,14 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user
   markTicketUnreadFor(ticket, getTicketCounterparty(ticket, req.user.username));
 
   await writeTickets(tickets);
+  queueTimelineEvent({
+    type: 'ticket_replied',
+    category: 'Tickets',
+    actor: req.user.username,
+    role: req.user.role,
+    severity: 'Info',
+    description: `Ticket reply added: ${message.slice(0, 140)}`
+  });
   res.json({ saved: true, ticket });
 });
 

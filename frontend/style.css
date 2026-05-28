@@ -2170,6 +2170,72 @@ button {
   min-height: var(--control-height);
 }
 
+.remediation-body {
+  padding: 1.25rem;
+}
+
+.remediation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.remediation-grid h4,
+.timeline-feed-header strong {
+  color: var(--text-primary);
+}
+
+.timeline-toolbar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.timeline-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.timeline-filters .active-filter {
+  background-color: var(--color-primary-bg);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--color-primary);
+}
+
+.timeline-feed {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.timeline-feed-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: rgba(0, 0, 0, 0.12);
+  padding: 1rem;
+}
+
+.timeline-feed-header,
+.timeline-feed-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.timeline-feed-item p {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.45;
+  margin: 0.55rem 0;
+}
+
+.timeline-feed-meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
 .btn-danger-light {
   border-color: rgba(239, 68, 68, 0.32);
   color: #fca5a5;
@@ -2337,6 +2403,10 @@ button {
   }
 
   .ticket-admin-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .remediation-grid {
     grid-template-columns: 1fr;
   }
 

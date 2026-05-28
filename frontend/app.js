@@ -18,9 +18,11 @@ const appHomeBtn = document.getElementById('app-home-btn');
 const dashboardViewBtn = document.getElementById('dashboard-view-btn');
 const securityCenterBtn = document.getElementById('security-center-btn');
 const inboxViewBtn = document.getElementById('inbox-view-btn');
+const timelineViewBtn = document.getElementById('timeline-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
 const securityBackBtn = document.getElementById('security-back-btn');
 const inboxBackBtn = document.getElementById('inbox-back-btn');
+const timelineBackBtn = document.getElementById('timeline-back-btn');
 const governanceOpenBtn = document.getElementById('governance-open-btn');
 const governanceBackBtn = document.getElementById('governance-back-btn');
 const footerComplianceLink = document.getElementById('footer-compliance-link');
@@ -36,13 +38,14 @@ const simulationLabView = document.getElementById('simulation-lab-view');
 const securityCenterView = document.getElementById('security-center-view');
 const inboxView = document.getElementById('inbox-view');
 const governanceView = document.getElementById('governance-view');
+const timelineView = document.getElementById('timeline-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
 const GOVERNANCE_ACK_KEY = 'aiOpsGovernanceAcknowledgements';
 const GOVERNANCE_VERSION = 'governance-v1';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance', 'timeline']);
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -530,6 +533,7 @@ const copyCommandsBtn = document.getElementById('copy-commands-btn');
 const copyCmdText = document.getElementById('copy-cmd-text');
 
 const genReportBtn = document.getElementById('gen-report-btn');
+const genRemediationBtn = document.getElementById('gen-remediation-btn');
 const reportPanel = document.getElementById('report-panel');
 const reportLoadingState = document.getElementById('report-loading-state');
 const reportContent = document.getElementById('report-content');
@@ -537,6 +541,14 @@ const reportOutputPaper = document.getElementById('report-output-paper');
 const copyReportBtn = document.getElementById('copy-report-btn');
 const copyRepText = document.getElementById('copy-rep-text');
 const downloadReportBtn = document.getElementById('download-report-btn');
+const remediationPanel = document.getElementById('remediation-panel');
+const remediationLoadingState = document.getElementById('remediation-loading-state');
+const remediationContent = document.getElementById('remediation-content');
+const remediationActions = document.getElementById('remediation-actions');
+const remediationCommands = document.getElementById('remediation-commands');
+const remediationRollback = document.getElementById('remediation-rollback');
+const remediationRisks = document.getElementById('remediation-risks');
+const remediationEscalation = document.getElementById('remediation-escalation');
 
 const historyList = document.getElementById('history-list');
 const historyContent = document.getElementById('history-content');
@@ -554,9 +566,14 @@ const acknowledgeGovernanceBtn = document.getElementById('acknowledge-governance
 const exportGovernanceBtn = document.getElementById('export-governance-btn');
 const governanceHistoryList = document.getElementById('governance-history-list');
 const governanceStatus = document.getElementById('governance-status');
+const incidentTimelineList = document.getElementById('incident-timeline-list');
+const timelineFilters = document.getElementById('timeline-filters');
+const refreshTimelineBtn = document.getElementById('refresh-timeline-btn');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
+let incidentTimelineEvents = [];
+let activeTimelineFilter = 'All';
 
 // ==========================================
 // LOCAL MOCK DIAGNOSTIC ENGINE (Simulation)
@@ -1176,6 +1193,34 @@ function renderPlainList(element, items) {
   });
 }
 
+async function recordTimelineEvent(type, category, severity, description, metadata = {}) {
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    return;
+  }
+
+  try {
+    await fetch(`${API_BASE_URL}/timeline`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        type,
+        category,
+        severity,
+        description,
+        metadata
+      })
+    });
+  } catch {
+    // Timeline recording should never block primary workflows.
+  }
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1425,6 +1470,7 @@ Return concise defensive guidance with:
       hardening: data.recommendedSteps,
       priorityActions: data.limitations?.manualVerification ? [data.limitations.manualVerification] : data.recommendedSteps
     });
+    recordTimelineEvent('ai_security_review', 'AI', 'Info', 'AI security review run from Security Center.');
   } catch (error) {
     console.warn('[SECURITY REVIEW] Falling back to local defensive guidance.', error.message);
     renderSecurityAiReview(getFallbackSecurityReview(latestSecurityStatus));
@@ -1805,6 +1851,13 @@ ${scenario.log}`;
 
   await analyzeCurrentInput();
   updateSimulationContextBanner(scenario);
+  recordTimelineEvent(
+    'simulation_scenario_analyzed',
+    'Simulation',
+    scenario.level,
+    `Simulation scenario analyzed: ${scenario.title}.`,
+    { scenarioId: scenario.id }
+  );
 }
 
 function updateOperationalMetrics(metrics) {
@@ -2125,6 +2178,8 @@ function restoreSavedView() {
     showSecurityCenter({ persist: false });
   } else if (getSavedView() === 'inbox') {
     showInboxView({ persist: false });
+  } else if (getSavedView() === 'timeline') {
+    showTimelineView({ persist: false });
   } else if (getSavedView() === 'governance') {
     showGovernanceView({ persist: false });
   } else {
@@ -2144,6 +2199,7 @@ function showMetricsDashboard(options = {}) {
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   stopInboxPolling();
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
@@ -2169,6 +2225,7 @@ function showAnalyzerView(options = {}) {
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   stopInboxPolling();
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2196,6 +2253,7 @@ function showSimulationLab(options = {}) {
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   stopInboxPolling();
   simulationLabView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2217,6 +2275,7 @@ function showSecurityCenter(options = {}) {
   simulationLabView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   stopInboxPolling();
   securityCenterView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2240,6 +2299,7 @@ function showInboxView(options = {}) {
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   inboxView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -2249,6 +2309,30 @@ function showInboxView(options = {}) {
 
   loadTickets();
   startInboxPolling();
+}
+
+function showTimelineView(options = {}) {
+  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
+  stopInboxPolling();
+  timelineView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'timeline');
+  }
+
+  loadTimelineEvents();
 }
 
 function showGovernanceView(options = {}) {
@@ -2263,6 +2347,7 @@ function showGovernanceView(options = {}) {
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
   stopInboxPolling();
   governanceView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2330,8 +2415,10 @@ function resetAnalysisResultPanel() {
   severityContainer?.classList.add('hidden');
   commandsPanel?.classList.add('hidden');
   reportPanel?.classList.add('hidden');
+  remediationPanel?.classList.add('hidden');
   commandsLoadingState?.classList.add('hidden');
   reportLoadingState?.classList.add('hidden');
+  remediationLoadingState?.classList.add('hidden');
 
   if (commandsContent) {
     commandsContent.classList.add('hidden');
@@ -2339,6 +2426,10 @@ function resetAnalysisResultPanel() {
 
   if (reportContent) {
     reportContent.classList.add('hidden');
+  }
+
+  if (remediationContent) {
+    remediationContent.classList.add('hidden');
   }
 
   if (analyzeBtn) {
@@ -2358,6 +2449,7 @@ function cancelActiveAnalysis() {
 }
 
 function performSessionLogout() {
+  recordTimelineEvent('logout', 'Auth', 'Info', 'User logged out from the browser session.');
   cancelActiveAnalysis();
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
@@ -2403,6 +2495,7 @@ function applyRoleAccess() {
 
   dashboardViewBtn?.classList.toggle('hidden', !isAdmin);
   securityCenterBtn?.classList.toggle('hidden', !isAdmin);
+  timelineViewBtn?.classList.toggle('hidden', !isAdmin);
   inboxViewBtn?.classList.toggle('hidden', !hasToken);
   historyContent?.classList.add('hidden');
   document.getElementById('history-panel')?.classList.toggle('hidden', !hasToken);
@@ -2431,7 +2524,7 @@ function applyRoleAccess() {
     submitTicketBtn.textContent = isAdmin ? 'Create user-facing ticket' : 'Submit to Admin';
   }
 
-  if (!isAdmin && ['dashboard', 'security'].includes(getSavedView())) {
+  if (!isAdmin && ['dashboard', 'security', 'timeline'].includes(getSavedView())) {
     showAnalyzerView();
   }
 
@@ -2554,10 +2647,12 @@ appHomeBtn?.addEventListener('click', returnHomeToAnalyzer);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 securityCenterBtn?.addEventListener('click', showSecurityCenter);
 inboxViewBtn?.addEventListener('click', showInboxView);
+timelineViewBtn?.addEventListener('click', showTimelineView);
 governanceOpenBtn?.addEventListener('click', showGovernanceView);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 securityBackBtn?.addEventListener('click', showAnalyzerView);
 inboxBackBtn?.addEventListener('click', showAnalyzerView);
+timelineBackBtn?.addEventListener('click', showAnalyzerView);
 governanceBackBtn?.addEventListener('click', showAnalyzerView);
 simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
 simulationLabBtn?.addEventListener('click', showSimulationLab);
@@ -2571,6 +2666,7 @@ simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenari
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
 refreshTicketsBtn?.addEventListener('click', loadTickets);
+refreshTimelineBtn?.addEventListener('click', loadTimelineEvents);
 acknowledgeGovernanceBtn?.addEventListener('click', acknowledgeGovernanceGuidance);
 exportGovernanceBtn?.addEventListener('click', exportGovernanceHistory);
 changeSimulationBtn?.addEventListener('click', showSimulationLab);
@@ -2610,6 +2706,20 @@ alertsList?.addEventListener('click', (event) => {
   if (alertId) {
     acknowledgeAlert(alertId);
   }
+});
+
+timelineFilters?.addEventListener('click', (event) => {
+  const filter = event.target?.dataset?.timelineFilter;
+
+  if (!filter) {
+    return;
+  }
+
+  activeTimelineFilter = filter;
+  timelineFilters.querySelectorAll('button').forEach((button) => {
+    button.classList.toggle('active-filter', button.dataset.timelineFilter === filter);
+  });
+  renderTimelineEvents();
 });
 clearLocalHistoryBtn?.addEventListener('click', () => {
   sessionHistory = [];
@@ -3024,6 +3134,82 @@ genReportBtn.addEventListener('click', async () => {
   }
 });
 
+genRemediationBtn?.addEventListener('click', generateRemediationPlan);
+
+function renderRemediationPlan(plan) {
+  renderPlainList(remediationActions, plan.immediateActions);
+  renderPlainList(remediationCommands, plan.verificationCommands);
+  renderPlainList(remediationRollback, plan.rollbackPlan);
+  renderPlainList(remediationRisks, plan.riskNotes);
+  renderPlainList(remediationEscalation, plan.escalationCriteria);
+  remediationContent?.classList.remove('hidden');
+}
+
+function getFallbackRemediationPlan() {
+  return {
+    immediateActions: [
+      'Confirm current service status and scope before making changes.',
+      'Preserve relevant timestamps and recent logs.',
+      'Apply the lowest-risk corrective action first.'
+    ],
+    verificationCommands: [
+      'systemctl status <service> --no-pager',
+      'journalctl -u <service> -n 80 --no-pager',
+      'df -h',
+      'free -h'
+    ],
+    rollbackPlan: [
+      'Document configuration changes before applying them.',
+      'Restore the last known-good configuration if verification worsens.',
+      'Restart only the affected service after review.'
+    ],
+    riskNotes: [
+      'Review before running commands.',
+      'Avoid destructive commands and broad restarts without approval.'
+    ],
+    escalationCriteria: [
+      'Escalate if the issue affects users after initial checks.',
+      'Escalate immediately if compromise or data exposure is suspected.'
+    ]
+  };
+}
+
+async function generateRemediationPlan() {
+  if (!activeAnalysisResult) {
+    return;
+  }
+
+  remediationPanel?.classList.remove('hidden');
+  remediationLoadingState?.classList.remove('hidden');
+  remediationContent?.classList.add('hidden');
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/remediation-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      },
+      body: JSON.stringify({
+        analysis: activeAnalysisResult,
+        metrics: latestMetrics,
+        alerts: latestAlerts.filter((alert) => alert.status === 'Active')
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Remediation failed with ${response.status}`);
+    }
+
+    renderRemediationPlan(await response.json());
+  } catch (error) {
+    renderRemediationPlan(getFallbackRemediationPlan());
+  } finally {
+    remediationLoadingState?.classList.add('hidden');
+    remediationPanel?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
 // Copy Report triggers
 copyReportBtn.addEventListener('click', () => {
   if (!generatedReportText) return;
@@ -3170,6 +3356,75 @@ function exportGovernanceHistory() {
   if (governanceStatus) {
     governanceStatus.textContent = 'Acknowledgement history exported from this browser.';
     governanceStatus.classList.remove('hidden');
+  }
+}
+
+function getTimelineBadgeClass(severity) {
+  const normalizedSeverity = String(severity || 'Info').toLowerCase();
+
+  if (normalizedSeverity === 'critical') return 'badge-critical';
+  if (normalizedSeverity === 'warning') return 'badge-medium';
+  return 'badge-status-default';
+}
+
+function renderTimelineEvents() {
+  if (!incidentTimelineList) {
+    return;
+  }
+
+  const filteredEvents = activeTimelineFilter === 'All'
+    ? incidentTimelineEvents
+    : incidentTimelineEvents.filter((event) => event.category === activeTimelineFilter);
+
+  incidentTimelineList.innerHTML = '';
+
+  if (!filteredEvents.length) {
+    incidentTimelineList.innerHTML = '<p class="feedback-status">No timeline events for this filter.</p>';
+    return;
+  }
+
+  filteredEvents.forEach((event) => {
+    const item = document.createElement('article');
+    item.className = 'timeline-feed-item';
+    item.innerHTML = `
+      <div class="timeline-feed-header">
+        <span class="badge ${getTimelineBadgeClass(event.severity)}">${escapeHtml(event.severity || 'Info')}</span>
+        <strong>${escapeHtml(event.type || 'event')}</strong>
+        <span>${new Date(event.timestamp || Date.now()).toLocaleString()}</span>
+      </div>
+      <p>${escapeHtml(event.description || '')}</p>
+      <div class="timeline-feed-meta">
+        <span>Actor: ${escapeHtml(event.actor || 'system')}</span>
+        <span>Role: ${escapeHtml(event.role || '--')}</span>
+        <span>Category: ${escapeHtml(event.category || 'General')}</span>
+      </div>
+    `;
+    incidentTimelineList.appendChild(item);
+  });
+}
+
+async function loadTimelineEvents() {
+  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/timeline`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Timeline failed with ${response.status}`);
+    }
+
+    incidentTimelineEvents = await response.json();
+    renderTimelineEvents();
+  } catch {
+    if (incidentTimelineList) {
+      incidentTimelineList.innerHTML = '<p class="feedback-status">Could not load timeline right now.</p>';
+    }
   }
 }
 
