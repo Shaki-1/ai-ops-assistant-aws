@@ -123,6 +123,7 @@
             <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
             <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
             <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
+            <button class="btn-secondary" onclick="runQuickCheck('ssh')">Check SSH</button>
           </div>
 
         </div>
@@ -130,59 +131,8 @@
 
     </div>
 
-    <!-- RIGHT PANEL: Health, Dashboard Navigation, and Outputs -->
-    <div class="panel-column right-column">
-
-      <!-- Section 2: Server Health Monitor -->
-      <section class="dashboard-panel panel-health" aria-labelledby="health-title">
-        <div class="panel-header">
-          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
-            <line x1="6" y1="6" x2="6.01" y2="6"/>
-            <line x1="6" y1="18" x2="6.01" y2="18"/>
-          </svg>
-          <h2 id="health-title">Server Health Status</h2>
-          <span class="live-tag">LIVE POLL</span>
-        </div>
-        
-        <div class="health-metrics">
-          <div class="metric-card">
-            <span class="metric-label">Uptime</span>
-            <span class="metric-value" id="uptime-value">Loading...</span>
-          </div>
-          
-          <div class="metric-card">
-            <div class="metric-header">
-              <span class="metric-label">Memory Utilization</span>
-              <span class="metric-value" id="memory-percent">0%</span>
-            </div>
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" id="memory-fill" style="width: 0%"></div>
-            </div>
-            <span class="metric-subtext" id="memory-details">0.0 GB / 0.0 GB used</span>
-          </div>
-
-          <div class="metric-card">
-            <div class="metric-header">
-              <span class="metric-label">System Storage (C:/ or /)</span>
-              <span class="metric-value" id="disk-percent">0%</span>
-            </div>
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" id="disk-fill" style="width: 0%"></div>
-            </div>
-            <span class="metric-subtext" id="disk-details">0.0 GB / 0.0 GB free</span>
-          </div>
-        </div>
-
-        <div class="health-footer">
-          <span>Last Polled: <span id="last-polled-time">Never</span></span>
-        </div>
-      </section>
-
-      <div class="dashboard-side-nav">
-        <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
-      </div>
+    <!-- MIDDLE PANEL: Interactive Outputs -->
+    <div class="panel-column middle-column">
       
       <!-- Section 3: AI Troubleshooting Result -->
       <section class="dashboard-panel panel-result" aria-labelledby="result-title">
@@ -395,6 +345,61 @@
         </div>
       </section>
 
+    </div>
+
+    <!-- RIGHT PANEL: Server Health and Dashboard Navigation -->
+    <div class="panel-column right-column">
+
+      <!-- Section 2: Server Health Monitor -->
+      <section class="dashboard-panel panel-health" aria-labelledby="health-title">
+        <div class="panel-header">
+          <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+            <line x1="6" y1="6" x2="6.01" y2="6"/>
+            <line x1="6" y1="18" x2="6.01" y2="18"/>
+          </svg>
+          <h2 id="health-title">Server Health Status</h2>
+          <span class="live-tag">LIVE POLL</span>
+        </div>
+
+        <div class="health-metrics">
+          <div class="metric-card">
+            <span class="metric-label">Uptime</span>
+            <span class="metric-value" id="uptime-value">Loading...</span>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">Memory Utilization</span>
+              <span class="metric-value" id="memory-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="memory-fill" style="width: 0%"></div>
+            </div>
+            <span class="metric-subtext" id="memory-details">0.0 GB / 0.0 GB used</span>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">System Storage (C:/ or /)</span>
+              <span class="metric-value" id="disk-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="disk-fill" style="width: 0%"></div>
+            </div>
+            <span class="metric-subtext" id="disk-details">0.0 GB / 0.0 GB free</span>
+          </div>
+        </div>
+
+        <div class="health-footer">
+          <span>Last Polled: <span id="last-polled-time">Never</span></span>
+        </div>
+      </section>
+
+      <div class="dashboard-side-nav">
+        <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
+      </div>
     </div>
 
   </main>

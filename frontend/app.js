@@ -81,6 +81,54 @@ const LOG_TEMPLATES = {
   'apache-forbidden': `[Mon May 25 11:02:14.298104 2026] [authz_core:error] [pid 1234:tid 5678] [client 192.168.1.60:50110] AH01630: client denied by server configuration: /var/www/html/secure/\n[Mon May 25 11:02:18.520412 2026] [autoindex:error] [pid 1234:tid 5682] [client 192.168.1.60:50110] AH01276: Cannot serve directory /var/www/html/secure/: No matching DirectoryIndex (index.html,index.php) found, and server-generated directory index forbidden by Options directive`
 };
 
+const QUICK_CHECK_INPUTS = {
+  nginx: `Command:
+systemctl status nginx --no-pager
+
+Output:
+nginx.service - The nginx HTTP and reverse proxy server
+   Active: active (running)
+   Main PID: 1420 (nginx)
+   Listen: 80 and 443
+   Recent logs: no critical errors reported.`,
+
+  backend: `Command:
+pm2 status ai-ops-backend
+
+Output:
+App name: ai-ops-backend
+Status: online
+Restarts: 0
+Port: 3000
+Recent logs: Express server is accepting API requests.`,
+
+  disk: `Command:
+df -h /
+
+Output:
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/xvda1       30G   18G   12G  61% /
+Disk usage is below the critical threshold.`,
+
+  memory: `Command:
+free -h
+
+Output:
+              total        used        free      shared  buff/cache   available
+Mem:           957M        412M        178M         12M        367M        404M
+Swap:            0B          0B          0B
+Memory pressure is moderate. No OOM event detected in this snapshot.`,
+
+  ssh: `Command:
+journalctl -u sshd --since "30 minutes ago" --no-pager
+
+Output:
+sshd[8045]: Invalid user admin from 192.168.1.150 port 49282
+sshd[8049]: Failed password for invalid user admin1 from 192.168.1.150 port 49286 ssh2
+sshd[8055]: Failed password for invalid user oracle from 192.168.1.150 port 49290 ssh2
+Multiple failed SSH authentication attempts detected.`
+};
+
 // Global States
 let activeAnalysisResult = null;
 let currentActiveLog = "";
@@ -1122,10 +1170,9 @@ clearInputBtn.addEventListener('click', () => {
   logInput.focus();
 });
 
-// Primary Log Analyzer POST
-analyzeBtn.addEventListener('click', async () => {
+async function analyzeCurrentInput() {
   const rawLogText = logInput.value.trim();
-  
+
   if (!rawLogText) {
     alert("Please enter or select some system logs to analyze first.");
     logInput.focus();
@@ -1143,6 +1190,7 @@ analyzeBtn.addEventListener('click', async () => {
   // Collapse sub-panels for clean cycle recalculation
   commandsPanel.classList.add('hidden');
   reportPanel.classList.add('hidden');
+  showAnalyzerView();
 
   if (isOfflineMode) {
     // Zero-downtime Local Simulation Fallback
@@ -1157,26 +1205,26 @@ analyzeBtn.addEventListener('click', async () => {
 
   try {
     const response = await fetch(`${API_BASE_URL}/analyze-log`, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-  },
-  body: JSON.stringify({
-    logText: rawLogText
-  })
-});
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      },
+      body: JSON.stringify({
+        logText: rawLogText
+      })
+    });
 
-if (!response.ok) {
-  throw new Error(`Server returned HTTP ${response.status}`);
-}
+    if (!response.ok) {
+      throw new Error(`Server returned HTTP ${response.status}`);
+    }
 
     const data = await response.json();
     activeAnalysisResult = data;
 
     // Compile and render the analysis result cards
     renderAnalysisData(data);
-saveHistoryEntry(rawLogText, data);
+    saveHistoryEntry(rawLogText, data);
 
   } catch (error) {
     console.warn('[API FETCH FAILED] Direct backend unreachable. Triggering automatic local simulation.', error);
@@ -1188,7 +1236,10 @@ saveHistoryEntry(rawLogText, data);
     activeAnalysisResult = mockData;
     renderAnalysisData(mockData);
   }
-});
+}
+
+// Primary Log Analyzer POST
+analyzeBtn.addEventListener('click', analyzeCurrentInput);
 
 // Render Analysis Data structure dynamically
 function renderAnalysisData(data) {
@@ -1508,33 +1559,20 @@ downloadReportBtn.addEventListener('click', () => {
 });
 
 async function runQuickCheck(type) {
-  logInput.value = `Running ${type} check...`;
+  const quickCheckInput = QUICK_CHECK_INPUTS[type];
+
+  if (!quickCheckInput) {
+    return;
+  }
+
+  logInput.value = quickCheckInput;
+  logInput.focus();
   analyzeBtn.disabled = true;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/run-safe-check`, {
-      method: 'POST',
-      headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-  },
-      body: JSON.stringify({ checkType: type })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Safe check failed with HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    logInput.value = `Command:\n${data.command}\n\nOutput:\n${data.output}`;
-
+    await analyzeCurrentInput();
+  } finally {
     analyzeBtn.disabled = false;
-    analyzeBtn.click();
-
-  } catch (error) {
-    analyzeBtn.disabled = false;
-    logInput.value = `Safe check failed:\n${error.message}`;
   }
 }
 

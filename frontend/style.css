@@ -265,7 +265,7 @@ body {
   flex: 1;
   padding: 2.25rem;
   display: grid;
-  grid-template-columns: minmax(390px, 0.9fr) minmax(0, 1.6fr);
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.5fr) minmax(300px, 0.8fr);
   gap: 2.25rem;
   max-width: 1680px;
   width: 100%;
@@ -420,6 +420,10 @@ body {
 
 .left-column {
   /* Fix width of the side column */
+}
+
+.middle-column {
+  min-width: 0;
 }
 
 .right-column {
@@ -1552,7 +1556,7 @@ button {
 }
 
 /* --- Responsive Adjustments --- */
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
     padding: 1.25rem;
