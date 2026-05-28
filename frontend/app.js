@@ -16,7 +16,9 @@ const loginError = document.getElementById('login-error');
 const logoutBtn = document.getElementById('logout-btn');
 const appHomeBtn = document.getElementById('app-home-btn');
 const dashboardViewBtn = document.getElementById('dashboard-view-btn');
+const securityCenterBtn = document.getElementById('security-center-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
+const securityBackBtn = document.getElementById('security-back-btn');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationLabBtn = document.getElementById('simulation-lab-btn');
 const simulationBackBtn = document.getElementById('simulation-back-btn');
@@ -25,11 +27,12 @@ const themeToggleBtn = document.getElementById('theme-toggle-btn');
 const analyzerView = document.getElementById('analyzer-view');
 const metricsDashboardView = document.getElementById('metrics-dashboard-view');
 const simulationLabView = document.getElementById('simulation-lab-view');
+const securityCenterView = document.getElementById('security-center-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security']);
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -373,6 +376,7 @@ let clockIntervalId = null;
 let metricsCharts = null;
 let latestMetrics = null;
 let selectedSimulationScenario = null;
+let latestSecurityStatus = null;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -413,6 +417,21 @@ const simulationCauses = document.getElementById('simulation-causes');
 const simulationChecks = document.getElementById('simulation-checks');
 const simulationRisk = document.getElementById('simulation-risk');
 const simulationNextAction = document.getElementById('simulation-next-action');
+const securityAlerts = document.getElementById('security-alerts');
+const securityHttpsStatus = document.getElementById('security-https-status');
+const securityDnsStatus = document.getElementById('security-dns-status');
+const securityApiStatus = document.getElementById('security-api-status');
+const securityAuthStatus = document.getElementById('security-auth-status');
+const securityHostStatus = document.getElementById('security-host-status');
+const securityLastChecked = document.getElementById('security-last-checked');
+const securityCheckList = document.getElementById('security-check-list');
+const securityAiReviewBtn = document.getElementById('security-ai-review-btn');
+const securityAiLoading = document.getElementById('security-ai-loading');
+const securityAiResults = document.getElementById('security-ai-results');
+const securityAiSummary = document.getElementById('security-ai-summary');
+const securityAiRisks = document.getElementById('security-ai-risks');
+const securityAiHardening = document.getElementById('security-ai-hardening');
+const securityAiPriority = document.getElementById('security-ai-priority');
 const cpuChartValue = document.getElementById('cpu-chart-value');
 const ramChartValue = document.getElementById('ram-chart-value');
 const diskChartValue = document.getElementById('disk-chart-value');
@@ -1097,6 +1116,207 @@ function renderPlainList(element, items) {
   });
 }
 
+function renderSecurityAlerts(alerts) {
+  if (!securityAlerts) {
+    return;
+  }
+
+  securityAlerts.innerHTML = '';
+
+  if (!alerts.length) {
+    const alert = document.createElement('div');
+    alert.className = 'security-alert-card info';
+    alert.innerHTML = '<strong>Info</strong><span>No immediate defensive alerts from current browser/API checks.</span>';
+    securityAlerts.appendChild(alert);
+    return;
+  }
+
+  alerts.forEach((item) => {
+    const alert = document.createElement('div');
+    alert.className = `security-alert-card ${item.level.toLowerCase()}`;
+    alert.innerHTML = `<strong>${item.level}</strong><span>${item.message}</span>`;
+    securityAlerts.appendChild(alert);
+  });
+}
+
+function renderSecurityChecks(status) {
+  renderPlainList(securityCheckList, [
+    `API health: ${status.apiOk ? 'available' : 'unavailable'}`,
+    `Metrics availability: ${status.metricsOk ? 'available with current token' : 'unavailable or requires login'}`,
+    `Connection protocol: ${status.protocol}`,
+    `Current host/domain: ${status.host}`,
+    `Local authentication token: ${status.authenticated ? 'present' : 'missing'}`,
+    `Simulation mode: ${status.simulationMode ? 'active' : 'off'}`
+  ]);
+}
+
+async function refreshSecurityCenter() {
+  const token = localStorage.getItem('authToken');
+  const protocol = window.location.protocol;
+  const host = window.location.host || 'local file preview';
+  const status = {
+    protocol,
+    host,
+    authenticated: Boolean(token),
+    simulationMode: isSimulationModeEnabled(),
+    apiOk: false,
+    metricsOk: false,
+    checkedAt: new Date().toLocaleTimeString()
+  };
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/status`);
+    status.apiOk = response.ok;
+  } catch {
+    status.apiOk = false;
+  }
+
+  if (token) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/metrics`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      status.metricsOk = response.ok;
+    } catch {
+      status.metricsOk = false;
+    }
+  }
+
+  latestSecurityStatus = status;
+
+  setMetricText(securityHttpsStatus, protocol === 'https:' ? 'HTTPS active' : 'HTTPS unavailable');
+  setMetricText(securityDnsStatus, host.includes('duckdns.org') ? 'DuckDNS host detected' : 'Current host shown below');
+  setMetricText(securityApiStatus, status.apiOk ? 'API reachable' : 'API unavailable');
+  setMetricText(securityAuthStatus, status.authenticated ? 'Authenticated locally' : 'Unauthenticated');
+  setMetricText(securityHostStatus, host);
+  setMetricText(securityLastChecked, status.checkedAt);
+  renderSecurityChecks(status);
+
+  const alerts = [];
+  if (protocol !== 'https:') alerts.push({ level: 'Warning', message: 'HTTPS is unavailable for this browser session.' });
+  if (!status.apiOk) alerts.push({ level: 'Critical', message: 'Backend API health check is unavailable.' });
+  if (!status.metricsOk) alerts.push({ level: 'Warning', message: 'Protected metrics endpoint is unavailable for the current session.' });
+  if (status.simulationMode) alerts.push({ level: 'Info', message: 'Simulation mode is active; training data may be visible elsewhere.' });
+  if (!status.authenticated) alerts.push({ level: 'Warning', message: 'No local auth token is present.' });
+
+  renderSecurityAlerts(alerts);
+}
+
+function getFallbackSecurityReview(status) {
+  const risks = [];
+  const hardening = [
+    'Keep backend port 3000 private behind Nginx.',
+    'Restrict SSH ingress to trusted administrator IPs.',
+    'Use HTTPS whenever a valid certificate is available.'
+  ];
+  const priority = [];
+
+  if (status?.protocol !== 'https:') {
+    risks.push('HTTPS is not active for the current connection.');
+    priority.push('Verify certificate status and enable HTTPS redirect when available.');
+  }
+
+  if (!status?.apiOk) {
+    risks.push('API health is unavailable.');
+    priority.push('Restore backend API health before relying on dashboard checks.');
+  }
+
+  if (!status?.metricsOk) {
+    risks.push('Protected metrics are unavailable for this session.');
+    priority.push('Confirm the user is logged in and the token is valid.');
+  }
+
+  if (status?.simulationMode) {
+    risks.push('Simulation mode is active, so training data should not be treated as live telemetry.');
+  }
+
+  return {
+    summary: risks.length ? 'Defensive review found posture items to address.' : 'Current defensive browser/API checks look healthy.',
+    risks: risks.length ? risks : ['No immediate defensive risk detected from current browser/API checks.'],
+    hardening,
+    priorityActions: priority.length ? priority : ['Continue monitoring API, metrics, HTTPS, and access controls.']
+  };
+}
+
+function renderSecurityAiReview(review) {
+  setMetricText(securityAiSummary, review.summary || review.overallSecurityPosture || 'No summary returned.');
+  renderPlainList(securityAiRisks, review.risks);
+  renderPlainList(securityAiHardening, review.hardening || review.recommendedHardening || review.recommendedSteps);
+  renderPlainList(securityAiPriority, review.priorityActions);
+  securityAiResults?.classList.remove('hidden');
+}
+
+async function reviewSecurityPostureWithAI() {
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    renderSecurityAiReview(getFallbackSecurityReview(latestSecurityStatus));
+    return;
+  }
+
+  securityAiLoading?.classList.remove('hidden');
+  securityAiResults?.classList.add('hidden');
+
+  if (securityAiReviewBtn) {
+    securityAiReviewBtn.disabled = true;
+  }
+
+  try {
+    await refreshSecurityCenter();
+
+    const prompt = `Defensive security posture review only.
+
+Current status:
+${JSON.stringify(latestSecurityStatus, null, 2)}
+
+Recommended exposed ports:
+- 22 SSH: restrict in production
+- 80 HTTP: redirect to HTTPS when cert available
+- 443 HTTPS: public web access
+- 3000 backend: should NOT be public, only behind Nginx
+
+Return concise defensive guidance with:
+- overall security posture
+- risks
+- recommended hardening steps
+- priority actions`;
+
+    const response = await fetch(`${API_BASE_URL}/analyze-log`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        logText: prompt
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Security review failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    renderSecurityAiReview({
+      summary: data.summary,
+      risks: data.rootCauses,
+      hardening: data.recommendedSteps,
+      priorityActions: data.limitations?.manualVerification ? [data.limitations.manualVerification] : data.recommendedSteps
+    });
+  } catch (error) {
+    console.warn('[SECURITY REVIEW] Falling back to local defensive guidance.', error.message);
+    renderSecurityAiReview(getFallbackSecurityReview(latestSecurityStatus));
+  } finally {
+    securityAiLoading?.classList.add('hidden');
+
+    if (securityAiReviewBtn) {
+      securityAiReviewBtn.disabled = false;
+    }
+  }
+}
+
 function setAiMetricsHealthBadge(health) {
   if (!aiMetricsHealth) {
     return;
@@ -1502,6 +1722,8 @@ function restoreSavedView() {
     showMetricsDashboard({ persist: false });
   } else if (getSavedView() === 'simulation' && isSimulationModeEnabled()) {
     showSimulationLab({ persist: false });
+  } else if (getSavedView() === 'security') {
+    showSecurityCenter({ persist: false });
   } else {
     showAnalyzerView({ persist: false });
   }
@@ -1516,6 +1738,7 @@ function showMetricsDashboard(options = {}) {
 
   analyzerView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
 
@@ -1537,6 +1760,7 @@ function showAnalyzerView(options = {}) {
 
   metricsDashboardView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -1554,12 +1778,33 @@ function showSimulationLab(options = {}) {
 
   analyzerView?.classList.add('hidden');
   metricsDashboardView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
   simulationLabView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
   if (persist) {
     localStorage.setItem(VIEW_STORAGE_KEY, 'simulation');
   }
+}
+
+function showSecurityCenter(options = {}) {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'security');
+  }
+
+  refreshSecurityCenter();
 }
 
 function applyTheme(theme) {
@@ -1650,13 +1895,16 @@ applyTheme(localStorage.getItem('themePreference') || 'dark');
 
 appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
+securityCenterBtn?.addEventListener('click', showSecurityCenter);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
+securityBackBtn?.addEventListener('click', showAnalyzerView);
 simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
 simulationLabBtn?.addEventListener('click', showSimulationLab);
 simulationBackBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenario);
+securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 toggleHistoryBtn?.addEventListener('click', () => {
   const willShow = historyContent?.classList.contains('hidden');
   setHistoryVisible(Boolean(willShow));

@@ -402,6 +402,7 @@
 
       <div class="dashboard-side-nav">
         <button id="dashboard-view-btn" class="btn-secondary header-nav-btn">Resource Dashboard</button>
+        <button id="security-center-btn" class="btn-secondary header-nav-btn">Security Center</button>
       </div>
     </div>
 
@@ -644,6 +645,107 @@
           </div>
         </aside>
       </div>
+    </div>
+  </section>
+
+  <section class="dashboard-view security-center-view hidden" id="security-center-view" aria-labelledby="security-center-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Defensive Visibility</p>
+          <h2 id="security-center-title">Security Center</h2>
+          <p>Review non-intrusive security signals for the current app session, domain, API, and deployment posture.</p>
+        </div>
+        <button id="security-back-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <div class="security-alerts" id="security-alerts" aria-live="polite"></div>
+
+      <div class="security-overview-grid" aria-label="Security overview">
+        <div class="security-card">
+          <span>HTTPS Status</span>
+          <strong id="security-https-status">--</strong>
+        </div>
+        <div class="security-card">
+          <span>DNS/DuckDNS Status</span>
+          <strong id="security-dns-status">--</strong>
+        </div>
+        <div class="security-card">
+          <span>Backend API Status</span>
+          <strong id="security-api-status">--</strong>
+        </div>
+        <div class="security-card">
+          <span>Auth Status</span>
+          <strong id="security-auth-status">--</strong>
+        </div>
+        <div class="security-card">
+          <span>SSH Access Status</span>
+          <strong id="security-ssh-status">Restrict in production</strong>
+        </div>
+        <div class="security-card">
+          <span>Firewall/Security Group</span>
+          <strong id="security-firewall-status">Review ingress rules</strong>
+        </div>
+        <div class="security-card">
+          <span>Host</span>
+          <strong id="security-host-status">--</strong>
+        </div>
+        <div class="security-card">
+          <span>Last Checked</span>
+          <strong id="security-last-checked">--</strong>
+        </div>
+      </div>
+
+      <div class="security-sections-grid">
+        <section class="security-section-card">
+          <h3>Defensive Checks</h3>
+          <ul class="styled-list" id="security-check-list"></ul>
+        </section>
+
+        <section class="security-section-card">
+          <h3>Recommended Exposed Ports</h3>
+          <div class="ports-guidance">
+            <div><strong>22 SSH</strong><span>Restrict in production to trusted IPs or VPN.</span></div>
+            <div><strong>80 HTTP</strong><span>Allow for web access and redirect to HTTPS when cert is available.</span></div>
+            <div><strong>443 HTTPS</strong><span>Public web access with a valid certificate.</span></div>
+            <div><strong>3000 Backend</strong><span>Should not be public; keep behind Nginx reverse proxy.</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="security-ai-panel">
+        <div class="security-ai-header">
+          <div>
+            <h3>AI Security Review</h3>
+            <p>Defensive posture review based only on current browser, API, auth, and dashboard status signals.</p>
+          </div>
+          <button id="security-ai-review-btn" class="btn-secondary">AI Review Security Posture</button>
+        </div>
+        <div class="loading-state hidden compact-loading" id="security-ai-loading">
+          <div class="spinner"></div>
+          <p>Reviewing defensive posture...</p>
+        </div>
+        <div class="security-ai-results hidden" id="security-ai-results">
+          <div class="commentary-block">
+            <strong>Overall Security Posture</strong>
+            <p id="security-ai-summary">--</p>
+          </div>
+          <div class="security-ai-columns">
+            <div>
+              <h4>Risks</h4>
+              <ul class="styled-list" id="security-ai-risks"></ul>
+            </div>
+            <div>
+              <h4>Recommended Hardening</h4>
+              <ul class="styled-list" id="security-ai-hardening"></ul>
+            </div>
+            <div>
+              <h4>Priority Actions</h4>
+              <ul class="styled-list" id="security-ai-priority"></ul>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </section>
 
