@@ -21,7 +21,7 @@ GROQ_MODEL=llama-3.1-8b-instant
 PORT=3000
 
 ADMIN_USERNAME=${admin_username}
-ADMIN_PASSWORD_HASH=${admin_password_hash}
+ADMIN_PASSWORD_HASH='${admin_password_hash}'
 AUTH_TOKEN_SECRET=${auth_token_secret}
 ENVEOF
 
