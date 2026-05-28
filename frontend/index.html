@@ -125,11 +125,6 @@
             <button class="btn-secondary" onclick="runQuickCheck('ssh')">Check SSH</button>
           </div>
 
-          <div class="responsible-use-inline hidden" id="responsible-use-inline">
-            <strong>Responsible Use</strong>
-            <p>Do not paste personal data, secrets, passwords, API keys, private keys, or confidential customer data. Use only logs you are allowed to process. Simulation mode is training-only, and AI suggestions must be manually verified.</p>
-          </div>
-
         </div>
       </section>
 
@@ -255,23 +250,7 @@
       </section>
 
 
-<!-- Section 3b: Command History Panel -->
-<section class="dashboard-panel panel-history" id="history-panel">
-  <div class="panel-header">
-    <h2>Command History</h2>
-    <button class="btn-secondary panel-header-action" id="toggle-history-btn">Show History</button>
-    <button class="btn-secondary panel-header-action" onclick="window.renderHistory()">Refresh History</button>
-    <button class="btn-secondary panel-header-action" id="clear-local-history-btn">Clear local history</button>
-  </div>
-
-  <div class="panel-content hidden" id="history-content">
-    <ul id="history-list" class="styled-list">
-      <li>No history yet.</li>
-    </ul>
-  </div>
-</section>
-
-      <!-- Section 4: Safe Commands & Scripts Generator -->
+      <!-- Section 3b: Safe Commands & Scripts Generator -->
       <section class="dashboard-panel panel-commands hidden" id="commands-panel" aria-labelledby="commands-title">
         <div class="panel-header">
           <svg class="panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -313,6 +292,22 @@
           </div>
         </div>
       </section>
+
+<!-- Section 4: Command History Panel -->
+<section class="dashboard-panel panel-history" id="history-panel">
+  <div class="panel-header">
+    <h2>Command History</h2>
+    <button class="btn-secondary panel-header-action" id="toggle-history-btn">Show History</button>
+    <button class="btn-secondary panel-header-action" onclick="window.renderHistory()">Refresh History</button>
+    <button class="btn-secondary panel-header-action" id="clear-local-history-btn">Clear local history</button>
+  </div>
+
+  <div class="panel-content hidden" id="history-content">
+    <ul id="history-list" class="styled-list">
+      <li>No history yet.</li>
+    </ul>
+  </div>
+</section>
 
       <!-- Section 5: Incident Report Output -->
       <section class="dashboard-panel panel-report hidden" id="report-panel" aria-labelledby="report-title">
@@ -647,7 +642,10 @@
           <h2 id="security-center-title">Security Center</h2>
           <p>Review non-intrusive security signals for the current app session, domain, API, and deployment posture.</p>
         </div>
-        <button id="security-back-btn" class="btn-secondary">Back to Analyzer</button>
+        <div class="dashboard-view-actions">
+          <button id="governance-open-btn" class="btn-secondary">Governance & Data Use</button>
+          <button id="security-back-btn" class="btn-secondary">Back to Analyzer</button>
+        </div>
       </div>
 
       <div class="security-alerts" id="security-alerts" aria-live="polite"></div>
@@ -738,15 +736,46 @@
         </div>
       </section>
 
-      <section class="security-section-card compliance-notice" id="compliance-notice">
-        <h3>Responsible Use</h3>
-        <ul class="styled-list">
-          <li>Do not paste personal data, secrets, passwords, API keys, private keys, or confidential customer data.</li>
-          <li>Logs may contain personal data under GDPR; use only content you are allowed to process.</li>
-          <li>Simulation mode is training-only and does not represent real server state.</li>
-          <li>AI suggestions are guidance and must be manually verified before action.</li>
-        </ul>
-      </section>
+    </div>
+  </section>
+
+  <section class="dashboard-view governance-view hidden" id="governance-view" aria-labelledby="governance-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Responsible Operations</p>
+          <h2 id="governance-title">Governance & Data Use</h2>
+          <p>Concise guidance for using AI-assisted operations features with care.</p>
+        </div>
+        <button id="governance-back-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <div class="governance-grid">
+        <section class="security-section-card governance-card">
+          <h3>Use Guidance</h3>
+          <ul class="styled-list">
+            <li>Do not paste secrets, passwords, API keys, private keys, or confidential credentials.</li>
+            <li>Do not paste personal data unless you are permitted to process it.</li>
+            <li>Logs may contain personal data and operationally sensitive details.</li>
+            <li>AI output must be manually verified before taking action.</li>
+            <li>Simulation mode is training-only and does not represent real server state.</li>
+            <li>Follow internal security and data handling policies.</li>
+          </ul>
+        </section>
+
+        <section class="security-section-card governance-card">
+          <div class="governance-card-header">
+            <h3>Governance Acknowledgement History</h3>
+            <button id="acknowledge-governance-btn" class="btn-primary">Acknowledge guidance</button>
+          </div>
+          <p class="ticket-muted">Acknowledgements are stored only in this browser and can be exported manually.</p>
+          <ul class="styled-list governance-history-list" id="governance-history-list">
+            <li>No local acknowledgements yet.</li>
+          </ul>
+          <button id="export-governance-btn" class="btn-secondary">Export acknowledgement history</button>
+          <p id="governance-status" class="feedback-status hidden"></p>
+        </section>
+      </div>
     </div>
   </section>
 
@@ -786,7 +815,7 @@
       <strong>AI Ops Assistant</strong> - Educational System Administration Suite.
     </div>
     <div class="footer-right">
-      <a href="#compliance-notice" id="footer-compliance-link">Responsible Use</a>
+      <a href="#governance-view" id="footer-compliance-link">Governance & Data Use</a>
       <span>Safety Layer Active</span>
       <svg class="secure-badge-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
     </div>

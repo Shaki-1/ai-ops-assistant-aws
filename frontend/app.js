@@ -21,8 +21,9 @@ const inboxViewBtn = document.getElementById('inbox-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
 const securityBackBtn = document.getElementById('security-back-btn');
 const inboxBackBtn = document.getElementById('inbox-back-btn');
+const governanceOpenBtn = document.getElementById('governance-open-btn');
+const governanceBackBtn = document.getElementById('governance-back-btn');
 const footerComplianceLink = document.getElementById('footer-compliance-link');
-const responsibleUseInline = document.getElementById('responsible-use-inline');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationLabBtn = document.getElementById('simulation-lab-btn');
 const simulationBackBtn = document.getElementById('simulation-back-btn');
@@ -34,11 +35,14 @@ const metricsDashboardView = document.getElementById('metrics-dashboard-view');
 const simulationLabView = document.getElementById('simulation-lab-view');
 const securityCenterView = document.getElementById('security-center-view');
 const inboxView = document.getElementById('inbox-view');
+const governanceView = document.getElementById('governance-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
+const GOVERNANCE_ACK_KEY = 'aiOpsGovernanceAcknowledgements';
+const GOVERNANCE_VERSION = 'governance-v1';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance']);
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -67,6 +71,7 @@ loginForm.addEventListener('submit', async (event) => {
 
     localStorage.setItem('authToken', data.token);
     localStorage.setItem('userRole', data.user?.role || 'user');
+    localStorage.setItem('username', data.user?.username || username);
     loginScreen.classList.add('hidden');
     applyRoleAccess();
     startAuthenticatedSession();
@@ -528,6 +533,10 @@ const submitTicketBtn = document.getElementById('submit-ticket-btn');
 const ticketStatus = document.getElementById('ticket-status');
 const ticketList = document.getElementById('ticket-list');
 const refreshTicketsBtn = document.getElementById('refresh-tickets-btn');
+const acknowledgeGovernanceBtn = document.getElementById('acknowledge-governance-btn');
+const exportGovernanceBtn = document.getElementById('export-governance-btn');
+const governanceHistoryList = document.getElementById('governance-history-list');
+const governanceStatus = document.getElementById('governance-status');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
@@ -1169,36 +1178,80 @@ function renderSecurityAlerts(alerts) {
   if (!alerts.length) {
     const alert = document.createElement('div');
     alert.className = 'security-alert-card info';
-    alert.innerHTML = '<strong>Info</strong><span>No immediate defensive alerts from current browser/API checks.</span>';
+    alert.innerHTML = '<strong><span class="status-dot info">i</span>Info</strong><span>No immediate defensive alerts from current browser/API checks.</span>';
     securityAlerts.appendChild(alert);
     return;
   }
 
   alerts.forEach((item) => {
     const alert = document.createElement('div');
-    alert.className = `security-alert-card ${item.level.toLowerCase()}`;
-    alert.innerHTML = `<strong>${item.level}</strong><span>${item.message}</span>`;
+    const level = String(item.level || 'Info').toLowerCase();
+    alert.className = `security-alert-card ${level}`;
+    alert.innerHTML = `<strong>${getSecurityStatusIcon(level)}${escapeHtml(item.level || 'Info')}</strong><span>${escapeHtml(item.message)}</span>`;
     securityAlerts.appendChild(alert);
   });
 }
 
 function renderSecurityChecks(status) {
-  renderPlainList(securityCheckList, [
-    `API health: ${status.apiOk ? 'available' : 'unavailable'}`,
-    `Metrics availability: ${status.metricsOk ? 'available with current token' : 'unavailable or requires login'}`,
-    `Connection protocol: ${status.protocol}`,
-    `Frontend protocol: ${status.protocol}`,
-    `Current host/domain: ${status.host}`,
-    `Local authentication token: ${status.authenticated ? 'present' : 'missing'}`,
-    `Simulation mode: ${status.simulationMode ? 'active' : 'off'}`,
-    'Backend exposure reminder: port 3000 should stay behind Nginx.',
-    'Certificate/rate-limit reminder: avoid repeated certificate requests.',
-    'Data handling reminder: do not paste secrets or personal data into AI analysis.'
-  ]);
+  if (!securityCheckList) {
+    return;
+  }
+
+  const checks = [
+    { label: 'API health', value: status.apiOk ? 'Available' : 'Unavailable', level: status.apiOk ? 'healthy' : 'action' },
+    { label: 'Metrics availability', value: status.metricsOk ? 'Available with current token' : 'Unavailable or requires login', level: status.metricsOk ? 'healthy' : 'warning' },
+    { label: 'Connection protocol', value: status.protocol, level: status.protocol === 'https:' ? 'healthy' : 'warning' },
+    { label: 'Frontend protocol', value: status.protocol, level: 'info' },
+    { label: 'Current host/domain', value: status.host, level: 'info' },
+    { label: 'Local authentication token', value: status.authenticated ? 'Present' : 'Missing', level: status.authenticated ? 'healthy' : 'action' },
+    { label: 'Simulation mode', value: status.simulationMode ? 'Active' : 'Off', level: status.simulationMode ? 'info' : 'healthy' },
+    { label: 'Backend exposure reminder', value: 'Port 3000 should stay behind Nginx.', level: 'info' },
+    { label: 'Certificate/rate-limit reminder', value: 'Avoid repeated certificate requests.', level: 'info' },
+    { label: 'Data handling reminder', value: 'Do not paste secrets or personal data into AI analysis.', level: 'info' }
+  ];
+
+  securityCheckList.innerHTML = checks.map((check) => `
+    <li class="security-check-item">
+      ${getSecurityStatusIcon(check.level)}
+      <span><strong>${escapeHtml(check.label)}:</strong> ${escapeHtml(check.value)}</span>
+    </li>
+  `).join('');
 }
 
-function securityLabel(label, ok) {
-  return `${ok ? 'Healthy' : 'Action needed'} — ${label}`;
+function getSecurityStatusIcon(level) {
+  const normalizedLevel = String(level || 'info').toLowerCase();
+  const labelMap = {
+    healthy: 'Healthy',
+    warning: 'Warning',
+    action: 'Action needed',
+    critical: 'Action needed',
+    info: 'Info'
+  };
+  const iconMap = {
+    healthy: '✓',
+    warning: '!',
+    action: '!',
+    critical: '!',
+    info: 'i'
+  };
+  const className = normalizedLevel === 'critical' ? 'action' : normalizedLevel;
+  return `<span class="status-dot ${className}" aria-label="${labelMap[normalizedLevel] || 'Info'}">${iconMap[normalizedLevel] || 'i'}</span>`;
+}
+
+function setSecurityStatus(element, label, level = 'info') {
+  if (!element) {
+    return;
+  }
+
+  const text = String(label || '--');
+  const statusLabel = level === 'healthy'
+    ? 'Healthy'
+    : level === 'warning'
+      ? 'Warning'
+      : level === 'action' || level === 'critical'
+        ? 'Action needed'
+        : 'Info';
+  element.innerHTML = `${getSecurityStatusIcon(level)}<span class="security-status-text"><span class="status-label">${statusLabel}</span>${escapeHtml(text)}</span>`;
 }
 
 async function refreshSecurityCenter() {
@@ -1237,10 +1290,10 @@ async function refreshSecurityCenter() {
 
   latestSecurityStatus = status;
 
-  setMetricText(securityHttpsStatus, protocol === 'https:' ? securityLabel('HTTPS active', true) : 'Warning — HTTPS unavailable');
-  setMetricText(securityDnsStatus, host.includes('duckdns.org') ? securityLabel('DuckDNS host detected', true) : 'Warning — custom/local host');
-  setMetricText(securityApiStatus, status.apiOk ? securityLabel('API reachable', true) : 'Action needed — API unavailable');
-  setMetricText(securityAuthStatus, status.authenticated ? securityLabel('Authenticated locally', true) : 'Action needed — unauthenticated');
+  setSecurityStatus(securityHttpsStatus, protocol === 'https:' ? 'HTTPS active' : 'HTTPS unavailable', protocol === 'https:' ? 'healthy' : 'warning');
+  setSecurityStatus(securityDnsStatus, host.includes('duckdns.org') ? 'DuckDNS host detected' : 'Custom/local host', host.includes('duckdns.org') ? 'healthy' : 'warning');
+  setSecurityStatus(securityApiStatus, status.apiOk ? 'API reachable' : 'API unavailable', status.apiOk ? 'healthy' : 'action');
+  setSecurityStatus(securityAuthStatus, status.authenticated ? 'Authenticated locally' : 'Unauthenticated', status.authenticated ? 'healthy' : 'action');
   setMetricText(securityHostStatus, host);
   setMetricText(securityLastChecked, status.checkedAt);
   renderSecurityChecks(status);
@@ -1825,6 +1878,8 @@ function restoreSavedView() {
     showSecurityCenter({ persist: false });
   } else if (getSavedView() === 'inbox') {
     showInboxView({ persist: false });
+  } else if (getSavedView() === 'governance') {
+    showGovernanceView({ persist: false });
   } else {
     showAnalyzerView({ persist: false });
   }
@@ -1841,6 +1896,7 @@ function showMetricsDashboard(options = {}) {
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
   stopInboxPolling();
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
@@ -1865,6 +1921,7 @@ function showAnalyzerView(options = {}) {
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
   stopInboxPolling();
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -1885,6 +1942,7 @@ function showSimulationLab(options = {}) {
   metricsDashboardView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
   stopInboxPolling();
   simulationLabView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -1905,6 +1963,7 @@ function showSecurityCenter(options = {}) {
   metricsDashboardView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
   stopInboxPolling();
   securityCenterView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -1927,6 +1986,7 @@ function showInboxView(options = {}) {
   metricsDashboardView?.classList.add('hidden');
   simulationLabView?.classList.add('hidden');
   securityCenterView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
   inboxView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -1936,6 +1996,29 @@ function showInboxView(options = {}) {
 
   loadTickets();
   startInboxPolling();
+}
+
+function showGovernanceView(options = {}) {
+  if (!localStorage.getItem('authToken')) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  stopInboxPolling();
+  governanceView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'governance');
+  }
+
+  renderGovernanceHistory();
 }
 
 function applyTheme(theme) {
@@ -1976,6 +2059,7 @@ function performSessionLogout() {
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
   localStorage.removeItem('userRole');
+  localStorage.removeItem('username');
   localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
   setSimulationMode(false);
   applyRoleAccess();
@@ -2145,9 +2229,11 @@ appHomeBtn?.addEventListener('click', showAnalyzerView);
 dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 securityCenterBtn?.addEventListener('click', showSecurityCenter);
 inboxViewBtn?.addEventListener('click', showInboxView);
+governanceOpenBtn?.addEventListener('click', showGovernanceView);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 securityBackBtn?.addEventListener('click', showAnalyzerView);
 inboxBackBtn?.addEventListener('click', showAnalyzerView);
+governanceBackBtn?.addEventListener('click', showAnalyzerView);
 simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
 simulationLabBtn?.addEventListener('click', showSimulationLab);
 simulationBackBtn?.addEventListener('click', showAnalyzerView);
@@ -2157,17 +2243,12 @@ simulationAnalyzeBtn?.addEventListener('click', analyzeSelectedSimulationScenari
 securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
 refreshTicketsBtn?.addEventListener('click', loadTickets);
+acknowledgeGovernanceBtn?.addEventListener('click', acknowledgeGovernanceGuidance);
+exportGovernanceBtn?.addEventListener('click', exportGovernanceHistory);
 changeSimulationBtn?.addEventListener('click', showSimulationLab);
 footerComplianceLink?.addEventListener('click', (event) => {
-  if (!isAdminUser()) {
-    event.preventDefault();
-    showAnalyzerView();
-    responsibleUseInline?.classList.remove('hidden');
-    responsibleUseInline?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
-
-  showSecurityCenter();
+  event.preventDefault();
+  showGovernanceView();
 });
 ticketList?.addEventListener('change', (event) => {
   const ticketId = event.target?.dataset?.ticketStatus;
@@ -2176,9 +2257,16 @@ ticketList?.addEventListener('change', (event) => {
   }
 });
 ticketList?.addEventListener('click', (event) => {
-  const ticketId = event.target?.dataset?.ticketReplyBtn;
-  if (ticketId) {
-    replyToTicket(ticketId);
+  const replyTicketId = event.target?.dataset?.ticketReplyBtn;
+  const deleteTicketId = event.target?.dataset?.ticketDelete;
+
+  if (replyTicketId) {
+    replyToTicket(replyTicketId);
+    return;
+  }
+
+  if (deleteTicketId) {
+    deleteTicket(deleteTicketId);
   }
 });
 clearLocalHistoryBtn?.addEventListener('click', () => {
@@ -2618,6 +2706,83 @@ async function runQuickCheck(type) {
   }
 }
 
+function readGovernanceAcknowledgements() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(GOVERNANCE_ACK_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeGovernanceAcknowledgements(entries) {
+  localStorage.setItem(GOVERNANCE_ACK_KEY, JSON.stringify(entries.slice(0, 50)));
+}
+
+function getCurrentUsername() {
+  return localStorage.getItem('username') || 'unknown';
+}
+
+function renderGovernanceHistory() {
+  if (!governanceHistoryList) {
+    return;
+  }
+
+  const entries = readGovernanceAcknowledgements();
+  governanceHistoryList.innerHTML = '';
+
+  if (!entries.length) {
+    governanceHistoryList.innerHTML = '<li>No local acknowledgements yet.</li>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const li = document.createElement('li');
+    li.textContent = `${new Date(entry.timestamp).toLocaleString()} - ${entry.username || 'unknown'} (${entry.role || 'unknown'}) - ${entry.version || GOVERNANCE_VERSION}`;
+    governanceHistoryList.appendChild(li);
+  });
+}
+
+function acknowledgeGovernanceGuidance() {
+  const entries = readGovernanceAcknowledgements();
+  entries.unshift({
+    timestamp: new Date().toISOString(),
+    username: getCurrentUsername(),
+    role: localStorage.getItem('userRole') || 'unknown',
+    version: GOVERNANCE_VERSION
+  });
+  writeGovernanceAcknowledgements(entries);
+  renderGovernanceHistory();
+
+  if (governanceStatus) {
+    governanceStatus.textContent = 'Guidance acknowledged locally in this browser.';
+    governanceStatus.classList.remove('hidden');
+  }
+}
+
+function exportGovernanceHistory() {
+  const entries = readGovernanceAcknowledgements();
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    version: GOVERNANCE_VERSION,
+    acknowledgements: entries
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `governance-acknowledgements-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+
+  if (governanceStatus) {
+    governanceStatus.textContent = 'Acknowledgement history exported from this browser.';
+    governanceStatus.classList.remove('hidden');
+  }
+}
+
 function renderTickets(tickets = []) {
   if (!ticketList) {
     return;
@@ -2646,12 +2811,17 @@ function renderTickets(tickets = []) {
           <button class="btn-secondary" data-ticket-reply-btn="${ticket.id}">Reply</button>
         </div>`
       : '';
+    const canDeleteTicket = isAdminUser() || ticket.from === getCurrentUsername();
+    const deleteControl = canDeleteTicket
+      ? `<button class="btn-secondary btn-danger-light" data-ticket-delete="${ticket.id}">Delete</button>`
+      : '';
 
     item.innerHTML = `
       <div class="ticket-item-header">
         <span class="badge badge-medium">${escapeHtml(ticket.status || 'New')}</span>
         <strong>${escapeHtml(ticket.type || 'feedback')}</strong>
         <span>${escapeHtml(ticket.from || 'user')} · ${new Date(ticket.time).toLocaleString()}</span>
+        ${deleteControl}
       </div>
       <p>${escapeHtml(ticket.message || '')}</p>
       ${repliesHtml}
@@ -2720,7 +2890,7 @@ async function submitTicketToAdmin() {
 
     ticketMessage.value = '';
     if (ticketStatus) {
-      ticketStatus.textContent = 'Submitted to admin.';
+      ticketStatus.textContent = isAdminUser() ? 'User-facing ticket created.' : 'Submitted to admin.';
       ticketStatus.classList.remove('hidden');
     }
     loadTickets();
@@ -2765,6 +2935,34 @@ async function replyToTicket(ticketId) {
     body: JSON.stringify({ message })
   });
   loadTickets();
+}
+
+async function deleteTicket(ticketId) {
+  const confirmed = window.confirm('Delete this ticket from the shared ticket list?');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Delete failed with ${response.status}`);
+    }
+
+    loadTickets();
+  } catch (error) {
+    if (ticketStatus) {
+      ticketStatus.textContent = 'Could not delete ticket right now.';
+      ticketStatus.classList.remove('hidden');
+    }
+  }
 }
 
 

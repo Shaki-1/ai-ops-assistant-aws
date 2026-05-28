@@ -1217,6 +1217,30 @@ app.get('/api/tickets/admin', authenticateToken, requireAdmin, async (req, res) 
   res.json(await readTickets());
 });
 
+app.delete('/api/tickets/:id', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+  const tickets = await readTickets();
+  const ticketIndex = tickets.findIndex((item) => item.id === req.params.id);
+
+  if (ticketIndex === -1) {
+    return res.status(404).json({
+      error: 'Ticket not found.'
+    });
+  }
+
+  const ticket = tickets[ticketIndex];
+  const ownsTicket = ticket.from === req.user.username;
+
+  if (req.user.role !== 'admin' && !ownsTicket) {
+    return res.status(403).json({
+      error: 'You can only delete your own tickets.'
+    });
+  }
+
+  tickets.splice(ticketIndex, 1);
+  await writeTickets(tickets);
+  res.json({ deleted: true });
+});
+
 app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req, res) => {
   const { status } = req.body || {};
 
