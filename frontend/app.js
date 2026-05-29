@@ -8,7 +8,7 @@
  * back to a local simulation engine to guarantee functional demonstrations.
  */
 
-const API_BASE_URL = "/api";
+const API_BASE_URL = '/api';
 
 const loginScreen = document.getElementById('login-screen');
 const loginForm = document.getElementById('login-form');
@@ -461,7 +461,7 @@ Several protected files changed recently.`,
     metrics: { cpu: 16, ram: 42, disk: 58, latency: 260 },
     log: `SIMULATED INCIDENT: DNS/DuckDNS Failure
 duckdns update returned no confirmation.
-dig shaki-aiops.duckdns.org -> stale IP address
+dig example.duckdns.org -> stale IP address
 Browser cannot resolve the expected hostname from some networks.`,
     commentary: {
       symptom: 'The server may be healthy, but the domain does not point to the current IP.',
