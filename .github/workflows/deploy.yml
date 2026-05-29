@@ -18,6 +18,8 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
 
           script: |
+            set -e
+
             cd /home/ec2-user/ai-ops-assistant-aws
 
             git pull origin main
@@ -25,9 +27,28 @@ jobs:
             cd backend
             npm install
 
-            pm2 restart ai-ops-backend
+            pm2 restart ai-ops-backend --update-env || pm2 start server.js --name ai-ops-backend --update-env
             pm2 save
 
             sudo systemctl restart nginx
 
-            curl -f http://localhost:3000/api/status
+            echo "Waiting for backend health check..."
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if curl --noproxy '*' -fsS http://127.0.0.1:3000/api/status -o /tmp/ai-ops-status.json; then
+                echo "Backend health check passed."
+                cat /tmp/ai-ops-status.json
+                exit 0
+              fi
+
+              echo "Health check failed on attempt $attempt. Recent PM2 logs:"
+              pm2 logs ai-ops-backend --lines 30 --nostream || true
+              sleep 5
+            done
+
+            echo "Backend health check failed after retries. Last response body, if any:"
+            cat /tmp/ai-ops-status.json 2>/dev/null || true
+            echo "PM2 status:"
+            pm2 status || true
+            echo "Nginx status:"
+            sudo systemctl status nginx --no-pager || true
+            exit 1
