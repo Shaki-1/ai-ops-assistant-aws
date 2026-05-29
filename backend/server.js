@@ -32,6 +32,9 @@ const USER_USERNAME = process.env.USER_USERNAME || 'user';
 const USER_PASSWORD_HASH = process.env.USER_PASSWORD_HASH || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
 const wsClients = new Set();
+const DATA_DIR = './data';
+const MAX_TEXT_INPUT = 20000;
+const rateLimitBuckets = new Map();
 
 const apiRuntimeMetrics = {
   totalRequests: 0,
@@ -57,22 +60,90 @@ const ALERT_THRESHOLDS = {
   aiFailuresWarning: 0
 };
 
-const TIMELINE_DIR = './data';
+const TIMELINE_DIR = DATA_DIR;
 const TIMELINE_FILE = './data/timeline.json';
 
-async function readTimelineEvents() {
-  try {
-    const raw = await fs.promises.readFile(TIMELINE_FILE, 'utf8');
-    const events = JSON.parse(raw);
-    return Array.isArray(events) ? events : [];
-  } catch {
-    return [];
+function ensureSafeJsonPath(filePath) {
+  const normalized = filePath.replace(/\\/g, '/');
+  const allowed = ['./data/', 'data/', './history.json', 'history.json'];
+
+  if (!allowed.some((prefix) => normalized.startsWith(prefix) || normalized === prefix)) {
+    throw new Error('Unsafe storage path rejected.');
   }
+}
+
+async function readJsonFile(filePath, fallbackValue) {
+  ensureSafeJsonPath(filePath);
+
+  try {
+    const raw = await fs.promises.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return fallbackValue;
+    }
+
+    if (error instanceof SyntaxError) {
+      const corruptPath = `${filePath}.corrupt-${Date.now()}`;
+      try {
+        await fs.promises.rename(filePath, corruptPath);
+        console.warn(`[STORAGE] Corrupted JSON moved to ${corruptPath}`);
+      } catch (renameError) {
+        console.warn('[STORAGE] Could not move corrupted JSON:', renameError.message);
+      }
+      return fallbackValue;
+    }
+
+    throw error;
+  }
+}
+
+async function writeJsonFileAtomic(filePath, value) {
+  ensureSafeJsonPath(filePath);
+  await fs.promises.mkdir(filePath.includes('/data/') || filePath.startsWith('data/') ? DATA_DIR : '.', { recursive: true });
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  await fs.promises.writeFile(tempPath, JSON.stringify(value, null, 2), 'utf8');
+  await fs.promises.rename(tempPath, filePath);
+}
+
+function validateText(value, maxLength = MAX_TEXT_INPUT) {
+  const text = String(value || '').trim();
+  return text.slice(0, maxLength);
+}
+
+function createRateLimiter({ windowMs, max, keyPrefix }) {
+  return (req, res, next) => {
+    const key = `${keyPrefix}:${req.ip}:${req.user?.username || ''}`;
+    const now = Date.now();
+    const bucket = rateLimitBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+
+    if (bucket.resetAt <= now) {
+      bucket.count = 0;
+      bucket.resetAt = now + windowMs;
+    }
+
+    bucket.count += 1;
+    rateLimitBuckets.set(key, bucket);
+
+    if (bucket.count > max) {
+      return res.status(429).json({ error: 'Too many requests. Please wait and try again.' });
+    }
+
+    next();
+  };
+}
+
+const loginRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20, keyPrefix: 'login' });
+const aiRateLimit = createRateLimiter({ windowMs: 60 * 1000, max: 20, keyPrefix: 'ai' });
+
+async function readTimelineEvents() {
+  const events = await readJsonFile(TIMELINE_FILE, []);
+  return Array.isArray(events) ? events : [];
 }
 
 async function writeTimelineEvents(events) {
   await fs.promises.mkdir(TIMELINE_DIR, { recursive: true });
-  await fs.promises.writeFile(TIMELINE_FILE, JSON.stringify(events.slice(0, 500), null, 2), 'utf8');
+  await writeJsonFileAtomic(TIMELINE_FILE, events.slice(0, 500));
 }
 
 async function recordTimelineEvent({
@@ -110,9 +181,17 @@ function queueTimelineEvent(event) {
   });
 }
 
-// Enable CORS and JSON parsing
+// Enable CORS, JSON parsing, and baseline security headers.
+app.disable('x-powered-by');
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+app.use(express.json({ limit: '256kb' }));
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api')) {
@@ -976,8 +1055,9 @@ function requireRole(...roles) {
  * @desc    Get dynamic server status parameters
  */
 
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
+app.post('/api/login', loginRateLimit, async (req, res) => {
+  const username = validateText(req.body?.username, 80);
+  const password = String(req.body?.password || '');
 
   if (!username || !password) {
     return res.status(400).json({
@@ -1125,7 +1205,7 @@ app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async 
   res.json({ saved: true, alert });
 });
 
-app.post('/api/analyze-alerts', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/analyze-alerts', authenticateToken, requireAdmin, aiRateLimit, async (req, res) => {
   try {
     const alerts = Array.isArray(req.body?.alerts)
       ? req.body.alerts
@@ -1205,13 +1285,12 @@ Rules:
   } catch (error) {
     console.error('[API ERROR /api/analyze-alerts]', error);
     res.status(500).json({
-      error: 'Alert analysis failed.',
-      details: error.message
+      error: 'Alert analysis failed.'
     });
   }
 });
 
-app.post('/api/analyze-metrics', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/analyze-metrics', authenticateToken, requireAdmin, aiRateLimit, async (req, res) => {
   try {
     const metrics = req.body?.metrics || await getServerMetricsSnapshot();
 
@@ -1280,13 +1359,12 @@ Rules:
   } catch (error) {
     console.error('[API ERROR /api/analyze-metrics]', error);
     res.status(500).json({
-      error: 'Metrics analysis failed.',
-      details: error.message
+      error: 'Metrics analysis failed.'
     });
   }
 });
 
-app.post('/api/remediation-plan', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
+app.post('/api/remediation-plan', authenticateToken, requireRole('admin', 'user'), aiRateLimit, async (req, res) => {
   try {
     const analysis = req.body?.analysis || {};
     const metrics = req.body?.metrics || null;
@@ -1388,8 +1466,7 @@ Rules:
   } catch (error) {
     console.error('[API ERROR /api/remediation-plan]', error);
     res.status(500).json({
-      error: 'Remediation plan failed.',
-      details: error.message
+      error: 'Remediation plan failed.'
     });
   }
 });
@@ -1398,10 +1475,10 @@ Rules:
  * @route   POST /api/analyze-log
  * @desc    Analyze server logs using GenAI (OpenAI API, Ollama, or Local Mock)
  */
-app.post('/api/analyze-log', authenticateToken, async (req, res) => {
-  const { logText } = req.body;
+app.post('/api/analyze-log', authenticateToken, aiRateLimit, async (req, res) => {
+  const logText = validateText(req.body?.logText, MAX_TEXT_INPUT);
 
-  if (!logText || logText.trim() === "") {
+  if (!logText) {
     apiRuntimeMetrics.failedAIAnalyses += 1;
     return res.status(400).json({ error: "Log text cannot be empty." });
   }
@@ -1472,14 +1549,14 @@ const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
     console.error('[API ERROR /api/analyze-log]', error);
     apiRuntimeMetrics.failedAIAnalyses += 1;
     res.status(500).json({ 
-      error: "GenAI log analysis failed.", 
-      details: error.message 
+      error: "GenAI log analysis failed."
     });
   }
 });
 
-app.post('/api/analyze-command-output', async (req, res) => {
-  const { command, output } = req.body;
+app.post('/api/analyze-command-output', aiRateLimit, async (req, res) => {
+  const command = validateText(req.body?.command, 1000);
+  const output = validateText(req.body?.output, MAX_TEXT_INPUT);
 
   if (!output || output.trim() === "") {
     return res.status(400).json({ error: "Command output cannot be empty." });
@@ -1553,8 +1630,7 @@ Rules:
   } catch (error) {
     console.error("[API ERROR /api/analyze-command-output]", error);
     res.status(500).json({
-      error: "Command analysis failed",
-      details: error.message
+      error: "Command analysis failed"
     });
   }
 });
@@ -1563,8 +1639,9 @@ Rules:
  * @route   POST /api/generate-commands
  * @desc    Generate safe debugging and check commands
  */
-app.post('/api/generate-commands', authenticateToken, requireAdmin, async (req, res) => {
-  const { logText, analysis } = req.body;
+app.post('/api/generate-commands', authenticateToken, requireAdmin, aiRateLimit, async (req, res) => {
+  const logText = validateText(req.body?.logText, MAX_TEXT_INPUT);
+  const analysis = req.body?.analysis;
 
   if (!logText || logText.trim() === "") {
     return res.status(400).json({ error: "Log text cannot be empty." });
@@ -1598,8 +1675,7 @@ app.post('/api/generate-commands', authenticateToken, requireAdmin, async (req, 
   } catch (error) {
     console.error('[API ERROR /api/generate-commands]', error);
     res.status(500).json({ 
-      error: "Command generation failed.", 
-      details: error.message 
+      error: "Command generation failed."
     });
   }
 });
@@ -1608,8 +1684,9 @@ app.post('/api/generate-commands', authenticateToken, requireAdmin, async (req, 
  * @route   POST /api/generate-report
  * @desc    Generate a structured professional incident report
  */
-app.post('/api/generate-report', authenticateToken, requireAdmin, async (req, res) => {
-  const { logText, analysis } = req.body;
+app.post('/api/generate-report', authenticateToken, requireAdmin, aiRateLimit, async (req, res) => {
+  const logText = validateText(req.body?.logText, MAX_TEXT_INPUT);
+  const analysis = req.body?.analysis;
 
   if (!logText || logText.trim() === "") {
     return res.status(400).json({ error: "Log text cannot be empty." });
@@ -1637,8 +1714,7 @@ app.post('/api/generate-report', authenticateToken, requireAdmin, async (req, re
   } catch (error) {
     console.error('[API ERROR /api/generate-report]', error);
     res.status(500).json({ 
-      error: "Report generation failed.", 
-      details: error.message 
+      error: "Report generation failed."
     });
   }
 });
@@ -1690,43 +1766,32 @@ const HISTORY_FILE = './history.json';
 app.post('/api/history', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const entry = req.body;
-
-    let history = [];
-    try {
-      const raw = await fs.promises.readFile(HISTORY_FILE, 'utf8');
-      history = JSON.parse(raw);
-    } catch {
-      history = [];
-    }
+    let history = await readJsonFile(HISTORY_FILE, []);
+    history = Array.isArray(history) ? history : [];
 
     history.unshift({
       time: new Date().toISOString(),
-      input: entry.input || '',
-      severity: entry.severity || 'Unknown',
-      summary: entry.summary || 'No summary'
+      input: validateText(entry.input, 300),
+      severity: validateText(entry.severity, 40) || 'Unknown',
+      summary: validateText(entry.summary, 300) || 'No summary'
     });
 
     history = history.slice(0, 50);
 
-    await fs.promises.writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+    await writeJsonFileAtomic(HISTORY_FILE, history);
 
     return res.json({ saved: true, count: history.length });
   } catch (error) {
     console.error('[HISTORY ERROR]', error);
     return res.status(500).json({
-      error: 'Could not save history',
-      details: error.message
+      error: 'Could not save history'
     });
   }
 });
 
 app.get('/api/history', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const raw = await fs.promises.readFile(HISTORY_FILE, 'utf8');
-    return res.json(JSON.parse(raw));
-  } catch {
-    return res.json([]);
-  }
+  const history = await readJsonFile(HISTORY_FILE, []);
+  return res.json(Array.isArray(history) ? history : []);
 });
 
 const TICKETS_DIR = './data';
@@ -1734,18 +1799,13 @@ const TICKETS_FILE = './data/tickets.json';
 const TICKET_STATUSES = ['New', 'In progress', 'Resolved'];
 
 async function readTickets() {
-  try {
-    const raw = await fs.promises.readFile(TICKETS_FILE, 'utf8');
-    const tickets = JSON.parse(raw);
-    return Array.isArray(tickets) ? tickets : [];
-  } catch {
-    return [];
-  }
+  const tickets = await readJsonFile(TICKETS_FILE, []);
+  return Array.isArray(tickets) ? tickets : [];
 }
 
 async function writeTickets(tickets) {
   await fs.promises.mkdir(TICKETS_DIR, { recursive: true });
-  await fs.promises.writeFile(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
+  await writeJsonFileAtomic(TICKETS_FILE, tickets);
 }
 
 function canViewTicket(ticket, user) {
@@ -1783,8 +1843,10 @@ function getTicketCounterparty(ticket, actorUsername) {
 }
 
 app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
-  const { type = 'feedback', message = '' } = req.body || {};
-  const cleanMessage = String(message).trim();
+  const allowedTypes = ['ticket', 'suggestion', 'feedback'];
+  const requestedType = validateText(req.body?.type || 'feedback', 40);
+  const cleanType = allowedTypes.includes(requestedType) ? requestedType : 'feedback';
+  const cleanMessage = validateText(req.body?.message, 2000);
 
   if (!cleanMessage) {
     return res.status(400).json({
@@ -1797,7 +1859,7 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
     const ticket = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       time: new Date().toISOString(),
-      type: String(type).slice(0, 40),
+      type: cleanType,
       message: cleanMessage.slice(0, 2000),
       from: req.user.username,
       role: req.user.role,
@@ -1921,7 +1983,7 @@ app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user
 });
 
 app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
-  const message = String(req.body?.message || '').trim();
+  const message = validateText(req.body?.message, 1200);
 
   if (!message) {
     return res.status(400).json({
@@ -2034,6 +2096,7 @@ const wss = new WebSocketServer({
 wss.on('connection', (socket, request) => {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
   socket.user = verifyWebSocketToken(url.searchParams.get('token'));
+  socket.isAlive = true;
   wsClients.add(socket);
 
   if (socket.user) {
@@ -2047,7 +2110,16 @@ wss.on('connection', (socket, request) => {
     socket.send(JSON.stringify({
       type: 'auth_required'
     }));
+    setTimeout(() => {
+      if (!socket.user && socket.readyState === WebSocket.OPEN) {
+        socket.close(1008, 'Unauthorized');
+      }
+    }, 5000);
   }
+
+  socket.on('pong', () => {
+    socket.isAlive = true;
+  });
 
   socket.on('message', (message) => {
     try {
@@ -2098,6 +2170,19 @@ setInterval(async () => {
     console.warn('[WS] Live update failed:', error.message);
   }
 }, 3000);
+
+setInterval(() => {
+  wsClients.forEach((client) => {
+    if (client.isAlive === false) {
+      wsClients.delete(client);
+      client.terminate();
+      return;
+    }
+
+    client.isAlive = false;
+    client.ping();
+  });
+}, 30000);
 
 
 // Start Server

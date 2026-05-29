@@ -1,43 +1,31 @@
-backend/.env
-node_modules/
-backend/node_modules/
-.terraform/
-terraform.tfstate
-terraform.tfstate.backup
-tfplan
-.env
-backend/.env
-.env
-backend/.env
-.env
-backend/.env
-.env
-backend/.env
-terraform.tfvars
-.env
-backend/.env
-terraform.tfvars
-.env
-backend/.env
-terraform.tfvars
-*.pdf
-*.pdf
+# Environment and secrets
 .env
 backend/.env
 *.pem
-terraform.tfvars
+*.key
+id_rsa*
+id_ed25519*
+duckdns.sh
+
+# Dependencies
+node_modules/
+backend/node_modules/
+backend/package-lock.json
+
+# Terraform local state/plans
 .terraform/
+.terraform-tmp/
 *.tfstate
 *.tfstate.backup
+terraform.tfstate
+terraform.tfstate.backup
 terraform.tfvars
 tfplan
-*.pdf
-backend/.env
-.env
-backend/history.json
-backend/history.json
 
+# Runtime data and local backups
 backend/history.json
-duckdns.sh
-backend/package-lock.json
+backend/data/*.json
 backups/
+
+# Large/local artifacts
+*.pdf

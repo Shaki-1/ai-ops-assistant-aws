@@ -61,5 +61,6 @@ variable "user_password" {
 }
 
 variable "auth_token_secret" {
-  type = string
+  type      = string
+  sensitive = true
 }
