@@ -49,6 +49,11 @@ printf '%s\n' "ADMIN_PASSWORD_HASH=$ADMIN_PASSWORD_HASH" >> .env
 printf '%s\n' "USER_PASSWORD_HASH=$USER_PASSWORD_HASH" >> .env
 
 chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/restore_app_data.sh
+(
+  cd /home/ec2-user/ai-ops-assistant-aws
+  ./scripts/restore_app_data.sh
+)
 
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
 systemctl enable pm2-ec2-user
@@ -174,14 +179,17 @@ for attempt in 1 2 3 4 5 6 7 8 9 10; do
   sleep 15
 done
 
-mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
-chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws/backups
+mkdir -p /home/ec2-user/backups/app-data
+chown -R ec2-user:ec2-user /home/ec2-user/backups
 
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/diagnose_deploy.sh
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/restore_app_data.sh
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/export_app_data.sh
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/import_app_data.sh
 
 cat > /etc/cron.d/ai-ops-history-backup <<CRONEOF
-*/30 * * * * ec2-user /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh >> /home/ec2-user/ai-ops-assistant-aws/backups/history/backup.log 2>&1
+*/30 * * * * ec2-user /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh >> /home/ec2-user/backups/app-data/backup.log 2>&1
 CRONEOF
 
 chmod 644 /etc/cron.d/ai-ops-history-backup

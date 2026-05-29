@@ -85,6 +85,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 :root[data-theme="light"] body {
@@ -354,6 +355,10 @@ body {
   margin: 0 auto;
 }
 
+body.operations-collapsed .dashboard-grid {
+  grid-template-columns: minmax(380px, 1.15fr) minmax(420px, 1.45fr) 56px;
+}
+
 .simulation-context-banner {
   grid-column: 1 / -1;
   display: flex;
@@ -521,6 +526,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2.25rem;
+  min-width: 0;
 }
 
 .dashboard-side-nav {
@@ -544,6 +550,30 @@ body {
 .right-column {
   /* Flexibly expanding center area */
   min-width: 0; /* Prevents flex items from overflowing container */
+}
+
+.operations-toggle {
+  width: 100%;
+  min-height: 38px;
+  white-space: normal;
+}
+
+.right-column.is-collapsed {
+  gap: 0;
+}
+
+.right-column.is-collapsed .dashboard-panel,
+.right-column.is-collapsed .dashboard-side-nav {
+  display: none;
+}
+
+.right-column.is-collapsed .operations-toggle {
+  writing-mode: vertical-rl;
+  min-height: 180px;
+  width: 44px;
+  padding: 0.75rem 0.35rem;
+  justify-self: end;
+  align-self: start;
 }
 
 /* --- Dashboard Card Panels --- */
@@ -2424,6 +2454,16 @@ button {
     gap: 1.5rem;
   }
 
+  body.operations-collapsed .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .right-column.is-collapsed .operations-toggle {
+    writing-mode: horizontal-tb;
+    width: 100%;
+    min-height: 38px;
+  }
+
   .simulation-context-banner {
     flex-direction: column;
     align-items: flex-start;
@@ -2532,6 +2572,12 @@ button {
   }
 }
 
+@media (max-width: 520px) {
+  .quick-action-group {
+    grid-template-columns: 1fr;
+  }
+}
+
 .quick-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2563,6 +2609,11 @@ button {
   width: 100%;
   padding-inline: 0.75rem;
   font-size: 0.8rem;
+  min-width: 0;
+  min-height: 38px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 
 

@@ -1,21 +1,50 @@
 #!/bin/bash
 
-set -e
+set -euo pipefail
 
-APP_DIR="/home/ec2-user/ai-ops-assistant-aws"
-HISTORY_FILE="$APP_DIR/backend/history.json"
-BACKUP_DIR="$APP_DIR/backups/history"
+APP_DIR="${APP_DIR:-/home/ec2-user/ai-ops-assistant-aws}"
+BACKUP_ROOT="${BACKUP_ROOT:-/home/ec2-user/backups}"
+BACKUP_DIR="$BACKUP_ROOT/app-data"
+TMP_DIR=$(mktemp -d)
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+ARCHIVE="$BACKUP_DIR/ai_ops_app_data_$TIMESTAMP.tar.gz"
+
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
 
 mkdir -p "$BACKUP_DIR"
+mkdir -p "$TMP_DIR/backend/data"
 
-if [ ! -f "$HISTORY_FILE" ]; then
-  echo "No history.json file found. Nothing to back up."
-  exit 0
+copy_if_exists() {
+  local source_file="$1"
+  local target_file="$2"
+
+  if [ -f "$source_file" ]; then
+    mkdir -p "$(dirname "$target_file")"
+    cp "$source_file" "$target_file"
+    echo "Included $(basename "$source_file")"
+  else
+    echo "Skipped missing $(basename "$source_file")"
+  fi
+}
+
+copy_if_exists "$APP_DIR/backend/data/tickets.json" "$TMP_DIR/backend/data/tickets.json"
+copy_if_exists "$APP_DIR/backend/data/timeline.json" "$TMP_DIR/backend/data/timeline.json"
+copy_if_exists "$APP_DIR/backend/history.json" "$TMP_DIR/backend/history.json"
+
+if find "$TMP_DIR" -type f | grep -q .; then
+  tar -czf "$ARCHIVE" -C "$TMP_DIR" .
+  echo "App data backup created: $ARCHIVE"
+else
+  echo "No app data files found to back up."
 fi
 
-TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-BACKUP_FILE="$BACKUP_DIR/history_$TIMESTAMP.json.gz"
+find "$BACKUP_DIR" -name "ai_ops_app_data_*.tar.gz" -type f | sort | head -n -20 | xargs -r rm -f
 
-gzip -c "$HISTORY_FILE" > "$BACKUP_FILE"
-
-echo "History backup created: $BACKUP_FILE"
+cat <<'NOTE'
+Note: /home/ec2-user/backups is local to this EC2 instance. Terraform destroy deletes it.
+Copy archives off the instance before destroy for real persistence, for example:
+scp ec2-user@YOUR_HOST:/home/ec2-user/backups/app-data/ai_ops_app_data_*.tar.gz .
+NOTE

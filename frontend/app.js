@@ -25,6 +25,8 @@ const inboxBackBtn = document.getElementById('inbox-back-btn');
 const timelineBackBtn = document.getElementById('timeline-back-btn');
 const governanceBackBtn = document.getElementById('governance-back-btn');
 const footerComplianceLink = document.getElementById('footer-compliance-link');
+const operationsPanel = document.getElementById('operations-panel');
+const operationsToggleBtn = document.getElementById('operations-toggle-btn');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationLabBtn = document.getElementById('simulation-lab-btn');
 const simulationBackBtn = document.getElementById('simulation-back-btn');
@@ -42,6 +44,7 @@ const timelineView = document.getElementById('timeline-view');
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
 const GOVERNANCE_ACK_KEY = 'aiOpsGovernanceAcknowledgements';
+const OPERATIONS_COLLAPSED_KEY = 'aiOpsOperationsPanelCollapsed';
 const GOVERNANCE_VERSION = 'governance-v1';
 const DEFAULT_VIEW = 'analyzer';
 const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance', 'timeline']);
@@ -2661,6 +2664,23 @@ function toggleTheme() {
   applyTheme(nextTheme);
 }
 
+function setOperationsPanelCollapsed(isCollapsed) {
+  const collapsed = Boolean(isCollapsed);
+  document.body.classList.toggle('operations-collapsed', collapsed);
+  operationsPanel?.classList.toggle('is-collapsed', collapsed);
+  operationsToggleBtn?.setAttribute('aria-expanded', String(!collapsed));
+
+  if (operationsToggleBtn) {
+    operationsToggleBtn.textContent = collapsed ? 'Expand tools' : 'Collapse tools';
+  }
+
+  localStorage.setItem(OPERATIONS_COLLAPSED_KEY, String(collapsed));
+}
+
+function initializeOperationsPanelState() {
+  setOperationsPanelCollapsed(localStorage.getItem(OPERATIONS_COLLAPSED_KEY) === 'true');
+}
+
 function setHistoryVisible(isVisible) {
   historyContent?.classList.toggle('hidden', !isVisible);
 
@@ -2909,6 +2929,7 @@ setSimulationMode(isSimulationModeEnabled(), { navigate: false });
 applyRoleAccess();
 restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
+initializeOperationsPanelState();
 
 // ==========================================
 // INTERACTIVE EVENT LISTENERS & LOGIC
@@ -2928,6 +2949,9 @@ simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimula
 simulationLabBtn?.addEventListener('click', showSimulationLab);
 simulationBackBtn?.addEventListener('click', showAnalyzerView);
 themeToggleBtn?.addEventListener('click', toggleTheme);
+operationsToggleBtn?.addEventListener('click', () => {
+  setOperationsPanelCollapsed(!document.body.classList.contains('operations-collapsed'));
+});
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 aiAlertsBtn?.addEventListener('click', analyzeAlertsWithAI);
 toggleAlertsPanelBtn?.addEventListener('click', () => toggleCollapsiblePanel(alertsPanelBody, toggleAlertsPanelBtn));
@@ -3528,6 +3552,9 @@ async function runQuickCheck(type) {
   analyzeBtn.disabled = true;
 
   try {
+    if (window.matchMedia('(max-width: 1180px)').matches) {
+      document.querySelector('.panel-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     await analyzeCurrentInput();
   } finally {
     analyzeBtn.disabled = false;
