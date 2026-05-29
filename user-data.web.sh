@@ -4,7 +4,6 @@ dnf update -y
 dnf install -y nginx git nodejs20 npm certbot python3-certbot-nginx
 
 systemctl enable nginx
-systemctl start nginx
 
 npm install -g pm2
 
@@ -42,8 +41,16 @@ sudo -u ec2-user bash -lc '
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
 systemctl enable pm2-ec2-user
 
+APP_DOMAIN="${duckdns_domain}.duckdns.org"
+NGINX_CONF="/etc/nginx/conf.d/ai-ops-assistant.conf"
+CERT_PATH="/etc/letsencrypt/live/${duckdns_domain}.duckdns.org/fullchain.pem"
+CURRENT_PUBLIC_IP=$(curl -fsS https://checkip.amazonaws.com || curl -fsS http://169.254.169.254/latest/meta-data/public-ipv4 || true)
+CURRENT_PUBLIC_IP=$(echo "$CURRENT_PUBLIC_IP" | tr -d '[:space:]')
 
-cat > /etc/nginx/conf.d/ai-ops-assistant.conf <<NGINXEOF
+echo "Current public IP: $CURRENT_PUBLIC_IP"
+echo "Writing plain HTTP Nginx config for $APP_DOMAIN."
+
+cat > "$NGINX_CONF" <<NGINXEOF
 server {
     listen 80;
     server_name ${duckdns_domain}.duckdns.org;
@@ -80,18 +87,50 @@ rm -f /etc/nginx/conf.d/default.conf
 chmod o+x /home/ec2-user
 chmod -R o+rx /home/ec2-user/ai-ops-assistant-aws/frontend
 
+if nginx -t; then
+  echo "Nginx config test passed."
+else
+  echo "Nginx config test failed. Generated config follows:"
+  sed -n '1,220p' "$NGINX_CONF"
+  exit 1
+fi
+
 systemctl restart nginx
+if systemctl is-active --quiet nginx; then
+  echo "Nginx is running with plain HTTP config."
+else
+  echo "Nginx failed to start. Generated config follows:"
+  sed -n '1,220p' "$NGINX_CONF"
+  systemctl status nginx --no-pager || true
+  exit 1
+fi
 
 cat > /home/ec2-user/duckdns.sh <<DUCKEOF
-
 #!/bin/bash
-curl "https://www.duckdns.org/update?domains=${duckdns_domain}&token=${duckdns_token}&ip=" -o /home/ec2-user/duckdns.log
+curl "https://www.duckdns.org/update?domains=${duckdns_domain}&token=${duckdns_token}&ip=$CURRENT_PUBLIC_IP" -o /home/ec2-user/duckdns.log
 DUCKEOF
 
 chmod +x /home/ec2-user/duckdns.sh
 chown ec2-user:ec2-user /home/ec2-user/duckdns.sh
 
 /home/ec2-user/duckdns.sh
+
+DUCKDNS_RESOLVED_IP=""
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  DUCKDNS_RESOLVED_IP=$(getent ahostsv4 "$APP_DOMAIN" | awk 'NR == 1 {print $1}')
+  if [ -n "$DUCKDNS_RESOLVED_IP" ]; then
+    echo "DuckDNS resolved IP attempt $attempt: $DUCKDNS_RESOLVED_IP"
+  else
+    echo "DuckDNS resolved IP attempt $attempt: not resolved"
+  fi
+
+  if [ -n "$CURRENT_PUBLIC_IP" ] && [ "$DUCKDNS_RESOLVED_IP" = "$CURRENT_PUBLIC_IP" ]; then
+    echo "DuckDNS resolves to the current public IP."
+    break
+  fi
+
+  sleep 15
+done
 
 mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
 chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws/backups
@@ -113,17 +152,40 @@ echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIQvO3e4CepfYYKNgHmXCFjUPLoDfrVD8Q3D3j
 chown -R ec2-user:ec2-user /home/ec2-user/.ssh
 chmod 600 /home/ec2-user/.ssh/authorized_keys
 
-
-
-CERT_PATH="/etc/letsencrypt/live/${duckdns_domain}.duckdns.org/fullchain.pem"
-
 if [ -f "$CERT_PATH" ]; then
   echo "Existing certificate found at $CERT_PATH. Skipping Certbot."
+elif [ -z "$CURRENT_PUBLIC_IP" ]; then
+  echo "Could not determine current public IP. Skipping Certbot. HTTP site remains available."
+elif [ "$DUCKDNS_RESOLVED_IP" != "$CURRENT_PUBLIC_IP" ]; then
+  echo "DuckDNS does not resolve to this instance yet. Skipping Certbot to avoid failed/rate-limited requests. HTTP site remains available."
+elif ! nginx -t; then
+  echo "Nginx config is not valid before Certbot. Skipping Certbot. HTTP site remains available."
+elif ! systemctl is-active --quiet nginx; then
+  echo "Nginx is not running before Certbot. Skipping Certbot. HTTP site remains available if Nginx can be restarted manually."
 else
+  echo "No existing certificate found and DuckDNS is ready. Running Certbot."
+  cp "$NGINX_CONF" "$NGINX_CONF.http-backup"
   certbot --nginx \
     --non-interactive \
     --agree-tos \
     --redirect \
     -m admin@${duckdns_domain}.duckdns.org \
-    -d ${duckdns_domain}.duckdns.org || echo "Certbot failed or rate-limited. HTTP site remains available."
+    -d ${duckdns_domain}.duckdns.org
+  CERTBOT_STATUS=$?
+
+  if [ "$CERTBOT_STATUS" -eq 0 ]; then
+    echo "Certbot completed successfully."
+    if nginx -t; then
+      systemctl reload nginx
+      echo "Nginx reloaded with HTTPS configuration."
+    else
+      echo "Nginx config failed after Certbot. Restoring HTTP config."
+      cp "$NGINX_CONF.http-backup" "$NGINX_CONF"
+      nginx -t && systemctl restart nginx
+    fi
+  else
+    echo "Certbot failed or was rate-limited. Restoring/keeping HTTP site available."
+    cp "$NGINX_CONF.http-backup" "$NGINX_CONF"
+    nginx -t && systemctl restart nginx
+  fi
 fi
