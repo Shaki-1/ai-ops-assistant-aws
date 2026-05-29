@@ -8,6 +8,9 @@
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --result-column-width: minmax(420px, 560px);
+  --tools-column-width: 320px;
+  --tools-collapsed-width: 48px;
 
   /* Theme Palette - Professional Dark Slate */
   --bg-app: #090d16;
@@ -348,7 +351,7 @@ body {
   flex: 1;
   padding: 2.25rem;
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.5fr) minmax(300px, 0.8fr);
+  grid-template-columns: minmax(420px, 1fr) var(--result-column-width) var(--tools-column-width);
   gap: 2.25rem;
   max-width: 1680px;
   width: 100%;
@@ -356,7 +359,8 @@ body {
 }
 
 body.operations-collapsed .dashboard-grid {
-  grid-template-columns: minmax(380px, 1.15fr) minmax(420px, 1.45fr) 56px;
+  grid-template-columns: minmax(620px, 1fr) var(--result-column-width) var(--tools-collapsed-width);
+  gap: 1.5rem;
 }
 
 .simulation-context-banner {
@@ -556,10 +560,13 @@ body.operations-collapsed .dashboard-grid {
   width: 100%;
   min-height: 38px;
   white-space: normal;
+  padding-inline: 0.7rem;
 }
 
 .right-column.is-collapsed {
   gap: 0;
+  width: var(--tools-collapsed-width);
+  overflow: hidden;
 }
 
 .right-column.is-collapsed .dashboard-panel,
@@ -570,7 +577,7 @@ body.operations-collapsed .dashboard-grid {
 .right-column.is-collapsed .operations-toggle {
   writing-mode: vertical-rl;
   min-height: 180px;
-  width: 44px;
+  width: var(--tools-collapsed-width);
   padding: 0.75rem 0.35rem;
   justify-self: end;
   align-self: start;
@@ -1647,6 +1654,30 @@ button {
   padding-inline: 0.9rem;
 }
 
+.panel-history .panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.history-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  gap: 0.45rem;
+  justify-content: end;
+  min-width: 0;
+}
+
+.history-actions .panel-header-action {
+  min-width: 0;
+  max-width: 120px;
+  padding-inline: 0.7rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
 .animate-pulse {
   animation: pulse-icon 2s infinite ease-in-out;
 }
@@ -2464,6 +2495,10 @@ button {
     min-height: 38px;
   }
 
+  .right-column.is-collapsed {
+    width: 100%;
+  }
+
   .simulation-context-banner {
     flex-direction: column;
     align-items: flex-start;
@@ -2530,6 +2565,20 @@ button {
 
   .dashboard-view-actions {
     justify-content: flex-start;
+  }
+
+  .panel-history .panel-header {
+    grid-template-columns: 1fr;
+  }
+
+  .history-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .history-actions .panel-header-action {
+    max-width: none;
   }
   
   .app-header {
