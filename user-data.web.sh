@@ -5,13 +5,31 @@ dnf install -y nginx git nodejs20 npm certbot python3-certbot-nginx
 
 systemctl enable nginx
 
-npm install -g pm2
+if npm install -g pm2; then
+  echo "PM2 installed globally."
+else
+  echo "ERROR: Failed to install PM2."
+  exit 1
+fi
 
 cd /home/ec2-user
 rm -rf ai-ops-assistant-aws
 git clone https://github.com/Shaki-1/ai-ops-assistant-aws ai-ops-assistant-aws
 cd /home/ec2-user/ai-ops-assistant-aws/backend
-npm install
+
+if npm install; then
+  echo "Backend npm install completed."
+else
+  echo "ERROR: Backend npm install failed."
+  exit 1
+fi
+
+if node -e "import('ws').then(()=>console.log('ws dependency available')).catch((error)=>{console.error(error.message); process.exit(1);})"; then
+  echo "Backend ws dependency check passed."
+else
+  echo "ERROR: ws dependency is missing after npm install."
+  exit 1
+fi
 
 ADMIN_PASSWORD_HASH=$(node -e "import('bcryptjs').then(async b=>console.log(await b.default.hash('${admin_password}', 10)))")
 USER_PASSWORD_HASH=$(node -e "import('bcryptjs').then(async b=>console.log(await b.default.hash('${user_password}', 10)))")
@@ -32,14 +50,38 @@ printf '%s\n' "USER_PASSWORD_HASH=$USER_PASSWORD_HASH" >> .env
 
 chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws
 
-sudo -u ec2-user bash -lc '
-  cd /home/ec2-user/ai-ops-assistant-aws/backend
-  pm2 start server.js --name ai-ops-backend --update-env
-  pm2 save
-'
-
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
 systemctl enable pm2-ec2-user
+
+if sudo -u ec2-user bash -lc '
+  cd /home/ec2-user/ai-ops-assistant-aws/backend
+  pm2 delete ai-ops-backend >/dev/null 2>&1 || true
+  pm2 start server.js --name ai-ops-backend --update-env
+  pm2 save
+  pm2 status
+'; then
+  echo "Backend started with PM2 as ec2-user."
+else
+  echo "ERROR: PM2 failed to start ai-ops-backend as ec2-user."
+  sudo -u ec2-user bash -lc "pm2 logs ai-ops-backend --lines 80 --nostream" || true
+  exit 1
+fi
+
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -fsS http://localhost:3000/api/status >/tmp/ai-ops-backend-status.json; then
+    echo "Backend API status check passed."
+    break
+  fi
+
+  echo "Backend API status not ready yet, attempt $attempt."
+  sleep 3
+done
+
+if ! curl -fsS http://localhost:3000/api/status >/tmp/ai-ops-backend-status.json; then
+  echo "ERROR: Backend API did not respond on localhost:3000."
+  sudo -u ec2-user bash -lc "pm2 status && pm2 logs ai-ops-backend --lines 80 --nostream" || true
+  exit 1
+fi
 
 APP_DOMAIN="${duckdns_domain}.duckdns.org"
 NGINX_CONF="/etc/nginx/conf.d/ai-ops-assistant.conf"
@@ -136,6 +178,7 @@ mkdir -p /home/ec2-user/ai-ops-assistant-aws/backups/history
 chown -R ec2-user:ec2-user /home/ec2-user/ai-ops-assistant-aws/backups
 
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/diagnose_deploy.sh
 
 cat > /etc/cron.d/ai-ops-history-backup <<CRONEOF
 */30 * * * * ec2-user /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh >> /home/ec2-user/ai-ops-assistant-aws/backups/history/backup.log 2>&1
