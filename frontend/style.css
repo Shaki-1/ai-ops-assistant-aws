@@ -2534,9 +2534,29 @@ button {
 
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
   margin-top: 0.15rem;
+}
+
+.quick-action-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.quick-action-group h3 {
+  grid-column: 1 / -1;
+  margin: 0 0 0.1rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .quick-actions .btn-secondary {
@@ -2741,6 +2761,10 @@ body::before {
   }
 
   .quick-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-action-group {
     grid-template-columns: 1fr;
   }
 

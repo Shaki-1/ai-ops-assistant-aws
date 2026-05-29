@@ -118,12 +118,36 @@
             <span>Analyze System Logs</span>
           </button>
 
-          <div class="quick-actions">
-            <button class="btn-secondary" onclick="runQuickCheck('nginx')">Check Nginx</button>
-            <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
-            <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
-            <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
-            <button class="btn-secondary" onclick="runQuickCheck('ssh')">Check SSH</button>
+          <div class="quick-actions" aria-label="Diagnostic quick checks">
+            <div class="quick-action-group">
+              <h3>Web/API</h3>
+              <button class="btn-secondary" onclick="runQuickCheck('nginx')">Check Nginx</button>
+              <button class="btn-secondary" onclick="runQuickCheck('backend')">Check Backend</button>
+              <button class="btn-secondary" onclick="runQuickCheck('api-latency')">Check API Latency</button>
+              <button class="btn-secondary" onclick="runQuickCheck('https-cert')">Check HTTPS Certificate</button>
+              <button class="btn-secondary" onclick="runQuickCheck('dns-duckdns')">Check DNS / DuckDNS</button>
+              <button class="btn-secondary" onclick="runQuickCheck('failed-requests')">Check Failed Requests</button>
+            </div>
+            <div class="quick-action-group">
+              <h3>System Resources</h3>
+              <button class="btn-secondary" onclick="runQuickCheck('cpu-load')">Check CPU Load</button>
+              <button class="btn-secondary" onclick="runQuickCheck('disk')">Check Disk</button>
+              <button class="btn-secondary" onclick="runQuickCheck('memory')">Check Memory</button>
+              <button class="btn-secondary" onclick="runQuickCheck('storage-permissions')">Check Storage Permissions</button>
+            </div>
+            <div class="quick-action-group">
+              <h3>Security</h3>
+              <button class="btn-secondary" onclick="runQuickCheck('ssh')">Check SSH</button>
+              <button class="btn-secondary" onclick="runQuickCheck('auth-logs')">Check Authentication Logs</button>
+              <button class="btn-secondary" onclick="runQuickCheck('firewall')">Check Firewall / Security Group</button>
+            </div>
+            <div class="quick-action-group">
+              <h3>Deployment</h3>
+              <button class="btn-secondary" onclick="runQuickCheck('pm2-process')">Check PM2 Process</button>
+              <button class="btn-secondary" onclick="runQuickCheck('system-updates')">Check System Updates</button>
+              <button class="btn-secondary" onclick="runQuickCheck('node-runtime')">Check Node.js Runtime</button>
+              <button class="btn-secondary" onclick="runQuickCheck('recent-errors')">Check Recent Errors</button>
+            </div>
           </div>
 
         </div>

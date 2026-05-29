@@ -55,14 +55,6 @@ server {
     location / {
         try_files \$uri \$uri/ /index.html;
     }
-location /ws {
-    proxy_pass http://localhost:3000/ws;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-}
 
     location /api/ {
         proxy_pass http://localhost:3000/api/;

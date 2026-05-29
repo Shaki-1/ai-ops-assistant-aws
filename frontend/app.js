@@ -152,7 +152,131 @@ ssh.service - OpenSSH server daemon
    Quick check status: normal
    Active: active (running)
    Listening on port 22
-   Current observation: normal administrative access only.`
+   Current observation: normal administrative access only.`,
+
+  'cpu-load': `Command:
+top -bn1 | head -20
+
+Output:
+top - 12:04:11 up 2 days,  4:18,  1 user,  load average: 1.82, 1.44, 0.91
+Tasks: 112 total,   2 running, 110 sleeping
+%Cpu(s): 72.4 us,  8.6 sy,  0.0 ni, 18.5 id,  0.5 wa
+PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM COMMAND
+2187 ec2-user 20   0  976m   138m   42m R  68.3 14.1 node
+Quick check status: warning
+Current observation: CPU is elevated but below critical threshold.`,
+
+  'api-latency': `Command:
+curl -w "status=%{http_code} time_total=%{time_total}s\n" -o /dev/null -s http://localhost:3000/api/status
+
+Output:
+status=200 time_total=1.284s
+Quick check status: warning
+Current observation: API is reachable, but latency is above the 1000 ms warning threshold.`,
+
+  'https-cert': `Command:
+certbot certificates && openssl s_client -connect example.duckdns.org:443 -servername example.duckdns.org </dev/null
+
+Output:
+Certificate Name: example.duckdns.org
+Domains: example.duckdns.org
+Expiry Date: 2026-08-19 10:22:14+00:00 (VALID: 82 days)
+HTTPS handshake: verify return code: 0 (ok)
+Quick check status: normal
+Current observation: certificate is valid and not near expiration.`,
+
+  'dns-duckdns': `Command:
+dig +short example.duckdns.org && curl -s https://www.duckdns.org/update
+
+Output:
+203.0.113.42
+DuckDNS update response: OK
+Quick check status: normal
+Current observation: DNS resolves and DuckDNS update is healthy.`,
+
+  'auth-logs': `Command:
+journalctl -u sshd --since "1 hour ago" --no-pager
+
+Output:
+May 29 12:11:02 ip-10-0-1-8 sshd[2214]: Failed password for invalid user admin from 198.51.100.17 port 55142 ssh2
+May 29 12:11:05 ip-10-0-1-8 sshd[2218]: Failed password for invalid user oracle from 198.51.100.17 port 55146 ssh2
+May 29 12:11:11 ip-10-0-1-8 sshd[2226]: Accepted publickey for ec2-user from 203.0.113.10 port 51220 ssh2
+Quick check status: warning
+Current observation: failed attempts are present; accepted login should be verified as expected.`,
+
+  'failed-requests': `Command:
+tail -40 /var/log/nginx/access.log | awk '$9 >= 500'
+
+Output:
+203.0.113.15 - - [29/May/2026:12:18:44 +0000] "POST /api/analyze-log HTTP/1.1" 502 157
+203.0.113.15 - - [29/May/2026:12:18:46 +0000] "GET /api/metrics HTTP/1.1" 502 157
+Quick check status: warning
+Current observation: recent failed requests suggest a backend or proxy interruption.`,
+
+  'pm2-process': `Command:
+pm2 status ai-ops-backend && pm2 logs ai-ops-backend --lines 20 --nostream
+
+Output:
+App name: ai-ops-backend
+Status: online
+Restarts: 1
+Uptime: 2h
+Recent logs: server listening on port 3000
+Quick check status: normal
+Current observation: PM2 process is online with a low restart count.`,
+
+  'system-updates': `Command:
+dnf check-update --security
+
+Output:
+Security updates available:
+openssl.x86_64  1:3.2.2-6.amzn2023
+nginx.x86_64    1:1.26.2-1.amzn2023
+Quick check status: warning
+Current observation: security updates are available and should be scheduled through the normal maintenance process.`,
+
+  firewall: `Command:
+aws ec2 describe-security-groups --group-ids sg-example
+
+Output:
+Inbound rules:
+22/tcp from 0.0.0.0/0
+80/tcp from 0.0.0.0/0
+443/tcp from 0.0.0.0/0
+3000/tcp no public rule detected
+Quick check status: warning
+Current observation: SSH is publicly reachable; restrict to trusted IPs or VPN in production.`,
+
+  'node-runtime': `Command:
+node --version && npm --version && node --check backend/server.js
+
+Output:
+v20.18.1
+10.8.2
+backend/server.js syntax check passed
+Quick check status: normal
+Current observation: Node.js runtime is present and backend syntax is valid.`,
+
+  'storage-permissions': `Command:
+ls -ld backend/data backups/history frontend
+
+Output:
+drwxr-xr-x ec2-user ec2-user backend/data
+drwxr-xr-x ec2-user ec2-user backups/history
+drwxr-xr-x ec2-user ec2-user frontend
+Quick check status: normal
+Current observation: application data and static frontend paths are readable by the expected owner.`,
+
+  'recent-errors': `Command:
+journalctl -u nginx --since "30 minutes ago" --no-pager
+pm2 logs ai-ops-backend --lines 30 --nostream
+
+Output:
+nginx: no recent errors in the selected window
+ai-ops-backend: [WARN] AI provider latency exceeded 1200 ms for one request
+ai-ops-backend: request recovered successfully
+Quick check status: warning
+Current observation: no service outage is visible, but recent AI latency should be watched.`
 };
 
 const SIMULATION_SCENARIOS = [
@@ -1519,7 +1643,8 @@ function updateLiveStatus(status) {
 function getWebSocketUrl() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const token = encodeURIComponent(localStorage.getItem('authToken') || '');
-  return `${protocol}//${window.location.host}/ws?token=${token}`;
+  const host = window.location.host;
+  return `${protocol}//${host}/ws?token=${token}`;
 }
 
 function stopMetricsPolling() {
@@ -1581,6 +1706,7 @@ function handleLiveMessage(data) {
   else if (data.type === 'alerts') renderAlerts(data.alerts || []);
   else if (data.type === 'inbox_unread') updateInboxNotificationBadge(data.count);
   else if (data.type === 'timeline_event') handleLiveTimelineEvent(data.event);
+  else if (data.type === 'live_status') updateLiveStatus('connected');
 }
 
 function connectLiveUpdates() {
@@ -1591,8 +1717,10 @@ function connectLiveUpdates() {
 
   try {
     isLiveDisconnecting = false;
-    liveSocket = new WebSocket(getWebSocketUrl());
-  } catch {
+    const liveUrl = getWebSocketUrl();
+    liveSocket = new WebSocket(liveUrl);
+  } catch (error) {
+    console.warn('[LIVE] Could not create WebSocket connection. REST fallback remains active.', error);
     liveSocket = null;
     scheduleLiveReconnect();
     startRestFallbackPolling();
@@ -1605,6 +1733,7 @@ function connectLiveUpdates() {
     updateLiveStatus('connected');
     stopMetricsPolling();
     stopInboxNotificationPolling();
+    liveSocket.send(JSON.stringify({ type: 'auth', token }));
   });
 
   liveSocket.addEventListener('message', (event) => {
@@ -1624,12 +1753,14 @@ function connectLiveUpdates() {
       return;
     }
 
-    updateLiveStatus('reconnecting');
+    updateLiveStatus('fallback');
+    console.warn('[LIVE] WebSocket disconnected. Using REST fallback and retrying in the background.');
     startRestFallbackPolling();
     scheduleLiveReconnect();
   });
 
-  liveSocket.addEventListener('error', () => {
+  liveSocket.addEventListener('error', (event) => {
+    console.warn('[LIVE] WebSocket connection failed. Check /ws proxy support, ws dependency install, and JWT auth. REST fallback remains active.', event);
     updateLiveStatus('fallback');
   });
 }
