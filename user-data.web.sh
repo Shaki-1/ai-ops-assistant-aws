@@ -188,6 +188,7 @@ chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/restore_app_data.sh
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/export_app_data.sh
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/import_app_data.sh
 chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/health_check_local.sh
+chmod +x /home/ec2-user/ai-ops-assistant-aws/scripts/create_tfvars_from_env.sh
 
 cat > /etc/cron.d/ai-ops-history-backup <<CRONEOF
 */30 * * * * ec2-user /home/ec2-user/ai-ops-assistant-aws/scripts/backup_history.sh >> /home/ec2-user/backups/app-data/backup.log 2>&1

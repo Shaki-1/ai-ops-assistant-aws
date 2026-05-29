@@ -106,180 +106,204 @@ const LOG_TEMPLATES = {
 };
 
 const QUICK_CHECK_INPUTS = {
-  nginx: `Command:
-systemctl status nginx --no-pager
-
+  nginx: `Diagnostic source: Nginx service health quick check
+Expected context: simulated/training output; evaluate whether Nginx is healthy or needs attention.
+Command observed: systemctl status nginx --no-pager
 Output:
 nginx.service - The nginx HTTP and reverse proxy server
-   Quick check status: normal
-   Active: active (running)
+   Loaded: loaded (/usr/lib/systemd/system/nginx.service; enabled)
+   Active: active (running) since Fri 2026-05-29 12:01:18 UTC; 2h 14min ago
    Main PID: 1420 (nginx)
-   Listen: 80 and 443
-   Current observation: service is responding normally.`,
-
-  backend: `Command:
-pm2 status ai-ops-backend
-
-Output:
-App name: ai-ops-backend
+   Listen sockets: 80/tcp and 443/tcp
+   Last config test: nginx: configuration file /etc/nginx/nginx.conf test is successful
 Quick check status: normal
-Status: online
-Restarts: 0
-Port: 3000
-Recent logs: Express server is accepting API requests.`,
+Evidence: service is active, enabled, and config test succeeded.
+Safe next checks: curl -I http://127.0.0.1, sudo nginx -t, sudo journalctl -u nginx -n 50 --no-pager`,
 
-  disk: `Command:
-df -h /
+  backend: `Diagnostic source: Backend API/PM2 health quick check
+Expected context: simulated/training output; determine whether the Node backend is serving API traffic.
+Command observed: pm2 status ai-ops-backend && curl http://127.0.0.1:3000/api/status
+Output:
+pm2: ai-ops-backend online, pid 2187, uptime 2h, restarts 0, memory 86 MB
+GET /api/status -> HTTP 200
+Response appStatus: OK
+Quick check status: normal
+Evidence: PM2 process is online and local API health endpoint returns 200 OK.
+Safe next checks: pm2 logs ai-ops-backend --lines 50 --nostream, curl -fsS http://127.0.0.1:3000/api/status`,
 
+  disk: `Diagnostic source: Root filesystem capacity quick check
+Expected context: simulated/training output; evaluate disk pressure and risk of write failures.
+Command observed: df -h /
 Output:
 Filesystem      Size  Used Avail Use% Mounted on
 /dev/xvda1       30G   18G   12G  61% /
 Quick check status: normal
-Disk usage is in a healthy operating range.`,
+Evidence: root filesystem is 61% used, below warning and critical thresholds.
+Safe next checks: df -h, du -sh /var/log/* 2>/dev/null | sort -h`,
 
-  memory: `Command:
-free -h
-
+  memory: `Diagnostic source: Memory pressure quick check
+Expected context: simulated/training output; evaluate whether RAM usage indicates pressure.
+Command observed: free -h
 Output:
               total        used        free      shared  buff/cache   available
 Mem:           957M        412M        178M         12M        367M        404M
 Swap:            0B          0B          0B
 Quick check status: normal
-Memory usage is in a healthy operating range.`,
+Evidence: approximately 404M remains available and no OOM events are shown.
+Safe next checks: free -h, ps aux --sort=-%mem | head -10`,
 
-  ssh: `Command:
-journalctl -u sshd --since "30 minutes ago" --no-pager
-
+  ssh: `Diagnostic source: SSH service health quick check
+Expected context: simulated/training output; evaluate SSH service state and access risk.
+Command observed: systemctl status sshd --no-pager
 Output:
-ssh.service - OpenSSH server daemon
-   Quick check status: normal
-   Active: active (running)
-   Listening on port 22
-   Current observation: normal administrative access only.`,
+sshd.service - OpenSSH server daemon
+   Loaded: loaded (/usr/lib/systemd/system/sshd.service; enabled)
+   Active: active (running) since Fri 2026-05-29 11:58:00 UTC
+   Listening on 0.0.0.0:22
+Recent auth log: accepted publickey for ec2-user from trusted-admin-ip
+Quick check status: normal
+Evidence: SSH daemon is active and recent accepted login used public key authentication.
+Safe next checks: sudo journalctl -u sshd -n 80 --no-pager, sudo grep -E "Failed|Accepted" /var/log/secure | tail -30`,
 
-  'cpu-load': `Command:
-top -bn1 | head -20
-
+  'cpu-load': `Diagnostic source: CPU load quick check
+Expected context: simulated/training output; evaluate whether CPU usage is healthy, warning, or critical.
+Command observed: top -bn1 | head -20
 Output:
-top - 12:04:11 up 2 days,  4:18,  1 user,  load average: 1.82, 1.44, 0.91
-Tasks: 112 total,   2 running, 110 sleeping
-%Cpu(s): 72.4 us,  8.6 sy,  0.0 ni, 18.5 id,  0.5 wa
-PID USER      PR  NI    VIRT    RES    SHR S  %CPU %MEM COMMAND
-2187 ec2-user 20   0  976m   138m   42m R  68.3 14.1 node
+top - 12:04:11 up 2 days, 4:18, 1 user, load average: 1.82, 1.44, 0.91
+Tasks: 112 total, 2 running, 110 sleeping
+%Cpu(s): 72.4 us, 8.6 sy, 0.0 ni, 18.5 id, 0.5 wa
+PID USER      %CPU %MEM COMMAND
+2187 ec2-user 68.3 14.1 node
 Quick check status: warning
-Current observation: CPU is elevated but below critical threshold.`,
+Evidence: CPU is elevated near the warning threshold but still below 90% critical saturation.
+Safe next checks: uptime, top -o %CPU, pm2 logs ai-ops-backend --lines 50 --nostream`,
 
-  'api-latency': `Command:
-curl -w "status=%{http_code} time_total=%{time_total}s\n" -o /dev/null -s http://localhost:3000/api/status
-
+  'api-latency': `Diagnostic source: Backend API latency quick check
+Expected context: simulated/training output; evaluate API reachability and latency.
+Command observed: curl -w "status=%{http_code} time_total=%{time_total}s" -o /dev/null -s http://127.0.0.1:3000/api/status
 Output:
 status=200 time_total=1.284s
 Quick check status: warning
-Current observation: API is reachable, but latency is above the 1000 ms warning threshold.`,
+Evidence: API is reachable with HTTP 200, but response time is 1284 ms, above the 1000 ms warning threshold.
+Safe next checks: curl -w "@curl-format.txt" http://127.0.0.1:3000/api/status, pm2 monit, pm2 logs ai-ops-backend --lines 80 --nostream`,
 
-  'https-cert': `Command:
-certbot certificates && openssl s_client -connect example.duckdns.org:443 -servername example.duckdns.org </dev/null
-
+  'https-cert': `Diagnostic source: HTTPS certificate quick check
+Expected context: simulated/training output; evaluate whether HTTPS certificate is valid.
+Command observed: certbot certificates
 Output:
 Certificate Name: example.duckdns.org
 Domains: example.duckdns.org
 Expiry Date: 2026-08-19 10:22:14+00:00 (VALID: 82 days)
+Certificate Path: /etc/letsencrypt/live/example.duckdns.org/fullchain.pem
 HTTPS handshake: verify return code: 0 (ok)
 Quick check status: normal
-Current observation: certificate is valid and not near expiration.`,
+Evidence: certificate exists, hostname matches, and expiry is not near.
+Safe next checks: sudo certbot certificates, curl -I https://example.duckdns.org`,
 
-  'dns-duckdns': `Command:
-dig +short example.duckdns.org && curl -s https://www.duckdns.org/update
-
+  'dns-duckdns': `Diagnostic source: DNS and DuckDNS quick check
+Expected context: simulated/training output; evaluate whether DNS points to the current server.
+Command observed: dig +short example.duckdns.org
 Output:
-203.0.113.42
+Current EC2 public IP: 203.0.113.42
+DuckDNS resolved IP: 203.0.113.42
 DuckDNS update response: OK
 Quick check status: normal
-Current observation: DNS resolves and DuckDNS update is healthy.`,
+Evidence: DNS resolved IP matches the current EC2 public IP.
+Safe next checks: dig +short example.duckdns.org, curl -I http://example.duckdns.org`,
 
-  'auth-logs': `Command:
-journalctl -u sshd --since "1 hour ago" --no-pager
-
+  'auth-logs': `Diagnostic source: SSH authentication log quick check
+Expected context: simulated/training output; evaluate whether auth activity is normal or suspicious.
+Command observed: sudo journalctl -u sshd --since "1 hour ago" --no-pager
 Output:
-May 29 12:11:02 ip-10-0-1-8 sshd[2214]: Failed password for invalid user admin from 198.51.100.17 port 55142 ssh2
-May 29 12:11:05 ip-10-0-1-8 sshd[2218]: Failed password for invalid user oracle from 198.51.100.17 port 55146 ssh2
-May 29 12:11:11 ip-10-0-1-8 sshd[2226]: Accepted publickey for ec2-user from 203.0.113.10 port 51220 ssh2
+May 29 12:11:02 host sshd[2214]: Failed password for invalid user admin from 198.51.100.17 port 55142 ssh2
+May 29 12:11:05 host sshd[2218]: Failed password for invalid user oracle from 198.51.100.17 port 55146 ssh2
+May 29 12:11:11 host sshd[2226]: Accepted publickey for ec2-user from 203.0.113.10 port 51220 ssh2
 Quick check status: warning
-Current observation: failed attempts are present; accepted login should be verified as expected.`,
+Evidence: two failed invalid-user attempts were followed by a public-key login that should be verified.
+Safe next checks: sudo grep -E "Failed|Accepted" /var/log/secure | tail -50, who, last -a | head`,
 
-  'failed-requests': `Command:
-tail -40 /var/log/nginx/access.log | awk '$9 >= 500'
-
+  'failed-requests': `Diagnostic source: Nginx failed request quick check
+Expected context: simulated/training output; evaluate whether recent HTTP failures indicate a proxy/backend issue.
+Command observed: tail -40 /var/log/nginx/access.log | awk '$9 >= 500'
 Output:
 203.0.113.15 - - [29/May/2026:12:18:44 +0000] "POST /api/analyze-log HTTP/1.1" 502 157
 203.0.113.15 - - [29/May/2026:12:18:46 +0000] "GET /api/metrics HTTP/1.1" 502 157
+GET /api/status checked afterward -> HTTP 200
 Quick check status: warning
-Current observation: recent failed requests suggest a backend or proxy interruption.`,
+Evidence: recent 502 responses occurred, but later health check recovered to 200 OK.
+Safe next checks: sudo tail -80 /var/log/nginx/error.log, pm2 logs ai-ops-backend --lines 80 --nostream`,
 
-  'pm2-process': `Command:
-pm2 status ai-ops-backend && pm2 logs ai-ops-backend --lines 20 --nostream
-
+  'pm2-process': `Diagnostic source: PM2 process quick check
+Expected context: simulated/training output; evaluate process state and restart risk.
+Command observed: pm2 status ai-ops-backend && pm2 logs ai-ops-backend --lines 20 --nostream
 Output:
 App name: ai-ops-backend
 Status: online
 Restarts: 1
 Uptime: 2h
-Recent logs: server listening on port 3000
+Recent logs: server listening on port 3000; no uncaught exceptions in last 20 lines
 Quick check status: normal
-Current observation: PM2 process is online with a low restart count.`,
+Evidence: process is online with low restart count and no recent crash stack traces.
+Safe next checks: pm2 status, pm2 logs ai-ops-backend --lines 50 --nostream`,
 
-  'system-updates': `Command:
-dnf check-update --security
-
+  'system-updates': `Diagnostic source: System package update quick check
+Expected context: simulated/training output; evaluate patching need without treating it as an outage.
+Command observed: dnf check-update --security
 Output:
 Security updates available:
 openssl.x86_64  1:3.2.2-6.amzn2023
 nginx.x86_64    1:1.26.2-1.amzn2023
+No active service failures observed.
 Quick check status: warning
-Current observation: security updates are available and should be scheduled through the normal maintenance process.`,
+Evidence: security updates are available, but this is maintenance risk rather than an active outage.
+Safe next checks: sudo dnf check-update --security, schedule a maintenance window before applying updates`,
 
-  firewall: `Command:
-aws ec2 describe-security-groups --group-ids sg-example
-
+  firewall: `Diagnostic source: Firewall/security group posture quick check
+Expected context: simulated/training output; evaluate exposure risk defensively.
+Command observed: reviewed intended inbound rules
 Output:
-Inbound rules:
-22/tcp from 0.0.0.0/0
-80/tcp from 0.0.0.0/0
-443/tcp from 0.0.0.0/0
-3000/tcp no public rule detected
+22/tcp SSH: open to 0.0.0.0/0
+80/tcp HTTP: open to 0.0.0.0/0
+443/tcp HTTPS: open to 0.0.0.0/0
+3000/tcp backend: no public rule detected; expected behind Nginx
 Quick check status: warning
-Current observation: SSH is publicly reachable; restrict to trusted IPs or VPN in production.`,
+Evidence: backend port is not public, but SSH is open broadly and should be restricted for production.
+Safe next checks: review EC2 security group inbound rules, restrict SSH to trusted IPs/VPN`,
 
-  'node-runtime': `Command:
-node --version && npm --version && node --check backend/server.js
-
+  'node-runtime': `Diagnostic source: Node.js runtime quick check
+Expected context: simulated/training output; evaluate whether the runtime can start the backend.
+Command observed: node --version && npm --version && node --check backend/server.js
 Output:
-v20.18.1
-10.8.2
-backend/server.js syntax check passed
+node: v20.18.1
+npm: 10.8.2
+backend/server.js syntax check: passed
+package dependency check: ws dependency present
 Quick check status: normal
-Current observation: Node.js runtime is present and backend syntax is valid.`,
+Evidence: Node runtime is present, syntax is valid, and WebSocket dependency is available.
+Safe next checks: node --check backend/server.js, npm ls ws --omit=dev`,
 
-  'storage-permissions': `Command:
-ls -ld backend/data backups/history frontend
-
+  'storage-permissions': `Diagnostic source: App storage permissions quick check
+Expected context: simulated/training output; evaluate whether file-backed data can be read/written.
+Command observed: ls -ld backend/data /home/ec2-user/backups/app-data frontend
 Output:
 drwxr-xr-x ec2-user ec2-user backend/data
-drwxr-xr-x ec2-user ec2-user backups/history
+drwxr-xr-x ec2-user ec2-user /home/ec2-user/backups/app-data
 drwxr-xr-x ec2-user ec2-user frontend
+Data files: tickets.json and timeline.json exist or will be initialized by restore_app_data.sh
 Quick check status: normal
-Current observation: application data and static frontend paths are readable by the expected owner.`,
+Evidence: app data and backup directories are owned by ec2-user and readable by the backend process.
+Safe next checks: ls -la backend/data, test -w backend/data`,
 
-  'recent-errors': `Command:
-journalctl -u nginx --since "30 minutes ago" --no-pager
-pm2 logs ai-ops-backend --lines 30 --nostream
-
+  'recent-errors': `Diagnostic source: Recent service error quick check
+Expected context: simulated/training output; evaluate recent logs for active outage signals.
+Command observed: journalctl -u nginx --since "30 minutes ago"; pm2 logs ai-ops-backend --lines 30 --nostream
 Output:
-nginx: no recent errors in the selected window
+nginx: no recent errors in selected window
 ai-ops-backend: [WARN] AI provider latency exceeded 1200 ms for one request
-ai-ops-backend: request recovered successfully
+ai-ops-backend: request recovered successfully; subsequent /api/status returned 200
 Quick check status: warning
-Current observation: no service outage is visible, but recent AI latency should be watched.`
+Evidence: no active Nginx outage; one recovered AI latency warning should be monitored.
+Safe next checks: pm2 logs ai-ops-backend --lines 100 --nostream, curl -fsS http://127.0.0.1:3000/api/status`
 };
 
 const SIMULATION_SCENARIOS = [
@@ -715,6 +739,7 @@ function getMockAnalysis(logText = '') {
   const text = logText.toLowerCase();
 
   if (
+    text.includes('quick check status: normal') ||
     text.includes('active (running)') ||
     text.includes('status=0/success') ||
     text.includes('status=0/success') ||
@@ -733,6 +758,26 @@ function getMockAnalysis(logText = '') {
         confidenceLevel: "High",
         missingInformation: null,
         manualVerification: "No immediate manual verification required."
+      }
+    };
+  }
+
+  if (text.includes('quick check status: warning')) {
+    return {
+      summary: "Warning condition detected in this quick check sample.",
+      severity: "Medium",
+      rootCauses: [
+        "The diagnostic output contains warning-level evidence that should be reviewed, but it does not prove a critical outage by itself."
+      ],
+      recommendedSteps: [
+        "Review the evidence lines in the sample and compare them with current live service status.",
+        "Run the listed safe next checks manually before changing configuration or restarting services."
+      ],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "Medium",
+        missingInformation: "This quick check is a point-in-time training sample and may not include full historical logs.",
+        manualVerification: "Confirm the current service state, resource usage, and recent logs on the server."
       }
     };
   }

@@ -365,6 +365,35 @@ function sanitizeObject(obj) {
   return obj;
 }
 
+function normalizeAnalysisResult(result) {
+  const normalized = result && typeof result === 'object' ? { ...result } : {};
+  const evidence = Array.isArray(normalized.evidenceFound) ? normalized.evidenceFound : [];
+  const safeCommands = Array.isArray(normalized.safeCommands) ? normalized.safeCommands : [];
+  const nextAction = normalized.nextAction ? String(normalized.nextAction) : '';
+  const escalationCriteria = normalized.escalationCriteria ? String(normalized.escalationCriteria) : '';
+
+  normalized.rootCauses = Array.isArray(normalized.rootCauses) ? normalized.rootCauses : [];
+  normalized.recommendedSteps = Array.isArray(normalized.recommendedSteps) ? normalized.recommendedSteps : [];
+
+  evidence.slice(0, 4).forEach((item) => {
+    normalized.rootCauses.push(`Evidence found: ${String(item).slice(0, 240)}`);
+  });
+
+  safeCommands.slice(0, 4).forEach((item) => {
+    normalized.recommendedSteps.push(`Safe command to verify manually: ${String(item).slice(0, 240)}`);
+  });
+
+  if (nextAction) {
+    normalized.recommendedSteps.push(`Next action: ${nextAction.slice(0, 240)}`);
+  }
+
+  if (escalationCriteria) {
+    normalized.recommendedSteps.push(`Escalate when: ${escalationCriteria.slice(0, 240)}`);
+  }
+
+  return normalized;
+}
+
 // ==========================================
 // SYSTEM STATS HELPER
 // ==========================================
@@ -765,6 +794,26 @@ function getMockAnalysis(logText = '') {
         confidenceLevel: "High",
         missingInformation: "This quick check is a point-in-time sample, not a full historical audit.",
         manualVerification: "Verify current service status on the server if symptoms appear."
+      }
+    };
+  }
+
+  if (text.includes('quick check status: warning')) {
+    return {
+      summary: "Warning condition detected in this quick check sample.",
+      severity: "Medium",
+      rootCauses: [
+        "The diagnostic output contains warning-level evidence that should be reviewed, but it does not prove a critical outage by itself."
+      ],
+      recommendedSteps: [
+        "Review the evidence lines in the sample and compare them with current live service status.",
+        "Run the listed safe next checks manually before changing configuration or restarting services."
+      ],
+      securityWarnings: null,
+      limitations: {
+        confidenceLevel: "Medium",
+        missingInformation: "This quick check is a point-in-time training sample and may not include full historical logs.",
+        manualVerification: "Confirm the current service state, resource usage, and recent logs on the server."
       }
     };
   }
@@ -1533,7 +1582,7 @@ const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
       };
     }
 
-    const sanitizedResult = sanitizeObject(parsedResult);
+    const sanitizedResult = normalizeAnalysisResult(sanitizeObject(parsedResult));
     apiRuntimeMetrics.successfulAIAnalyses += 1;
     queueTimelineEvent({
       type: 'ai_analysis_run',

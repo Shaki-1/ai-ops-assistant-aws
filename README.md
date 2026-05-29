@@ -139,7 +139,7 @@ ai-ops-assistant/
 ├── main.tf
 ├── variables.tf
 ├── outputs.tf
-├── terraform.tfvars
+├── terraform.tfvars.example
 ├── user-data.web.sh
 ├── README.md
 └── .gitignore
@@ -160,22 +160,18 @@ cd ai-ops-assistant-aws
 
 ## 2. Configure Terraform Variables
 
-Create or edit:
+Create a local, untracked `terraform.tfvars` from environment variables:
 
-```text
-terraform.tfvars
+```bash
+export TF_VAR_groq_api_key="your-private-groq-key"
+export TF_VAR_duckdns_token="your-private-duckdns-token"
+export TF_VAR_admin_password="your-private-admin-password"
+export TF_VAR_user_password="your-private-user-password"
+export TF_VAR_auth_token_secret="your-long-random-secret"
+./scripts/create_tfvars_from_env.sh
 ```
 
-Example:
-
-```hcl
-ec2_name       = "ai-ops-assistant"
-ec2_type       = "t3.micro"
-
-groq_api_key   = "YOUR_GROQ_API_KEY"
-duckdns_domain = "YOUR_DOMAIN"
-duckdns_token  = "YOUR_DUCKDNS_TOKEN"
-```
+Use `terraform.tfvars.example` for placeholder structure only. Do not commit real secrets.
 
 ---
 
