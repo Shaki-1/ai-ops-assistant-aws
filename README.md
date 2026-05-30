@@ -1,5 +1,23 @@
 # AI Ops Assistant
 
+![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?style=for-the-badge&logo=node.js&logoColor=white)
+![Express](https://img.shields.io/badge/Express-API-000000?style=for-the-badge&logo=express&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-App-F7DF1E?style=for-the-badge&logo=javascript&logoColor=111827)
+![HTML5](https://img.shields.io/badge/HTML5-Frontend-E34F26?style=for-the-badge&logo=html5&logoColor=white)
+![CSS3](https://img.shields.io/badge/CSS3-UI-1572B6?style=for-the-badge&logo=css3&logoColor=white)
+![Chart.js](https://img.shields.io/badge/Chart.js-Metrics-FF6384?style=for-the-badge&logo=chart.js&logoColor=white)
+![WebSocket](https://img.shields.io/badge/WebSocket-Live%20Updates-2563EB?style=for-the-badge)
+![PM2](https://img.shields.io/badge/PM2-Process%20Manager-2B037A?style=for-the-badge&logo=pm2&logoColor=white)
+![Nginx](https://img.shields.io/badge/Nginx-Reverse%20Proxy-009639?style=for-the-badge&logo=nginx&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-IaC-844FBA?style=for-the-badge&logo=terraform&logoColor=white)
+![AWS EC2](https://img.shields.io/badge/AWS%20EC2-Compute-FF9900?style=for-the-badge&logo=amazon-aws&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)
+![DuckDNS](https://img.shields.io/badge/DuckDNS-Dynamic%20DNS-F2B705?style=for-the-badge)
+![Let's Encrypt](https://img.shields.io/badge/Let's%20Encrypt-Certbot-003A70?style=for-the-badge&logo=letsencrypt&logoColor=white)
+![Groq](https://img.shields.io/badge/Groq-GenAI-F55036?style=for-the-badge)
+![JWT](https://img.shields.io/badge/JWT-Auth-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
+![Linux](https://img.shields.io/badge/Linux-Server-FCC624?style=for-the-badge&logo=linux&logoColor=111827)
+
 AI Ops Assistant is a training-focused DevOps and server operations dashboard for analyzing logs, reviewing server health, simulating incidents, managing support tickets, and deploying a small AWS-hosted application with Terraform.
 
 The project combines a static frontend, Node.js/Express backend, JWT-based role access, WebSocket live updates, Nginx reverse proxying, PM2 process management, DuckDNS, Certbot/Let's Encrypt, GitHub Actions deployment, and file-backed JSON storage.

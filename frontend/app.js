@@ -1142,9 +1142,17 @@ function parseMarkdownToHTML(markdown) {
   // Bold tags
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   
-  // Code block parsing with styling hooks
-  html = html.replace(/```bash\n([\s\S]*?)\n```/g, '<pre><code>$1</code></pre>');
-  html = html.replace(/```\n([\s\S]*?)\n```/g, '<pre><code>$1</code></pre>');
+  // Code block parsing with copy controls
+  html = html.replace(/```(?:bash)?\n([\s\S]*?)\n```/g, (match, code) => {
+    const encodedCommand = encodeURIComponent(code);
+    return `<div class="command-copy-card markdown-command-block">
+      <div class="command-copy-header">
+        <span>bash</span>
+        <button type="button" class="btn-copy command-copy-btn" data-copy-command-encoded="${encodedCommand}">Copy</button>
+      </div>
+      <pre class="command-code-block"><code class="language-bash">${code}</code></pre>
+    </div>`;
+  });
   
   // Bullet lists
   html = html.replace(/^\*\s+(.+)$/gm, '<li>$1</li>');
@@ -1545,6 +1553,65 @@ function renderPlainList(element, items) {
     li.textContent = item;
     element.appendChild(li);
   });
+}
+
+function createCommandBlock(command, label = 'Command') {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'command-copy-card';
+
+  const header = document.createElement('div');
+  header.className = 'command-copy-header';
+
+  const title = document.createElement('span');
+  title.textContent = label;
+
+  const copyButton = document.createElement('button');
+  copyButton.type = 'button';
+  copyButton.className = 'btn-copy command-copy-btn';
+  copyButton.dataset.copyCommand = command;
+  copyButton.textContent = 'Copy';
+
+  const pre = document.createElement('pre');
+  pre.className = 'command-code-block';
+
+  const code = document.createElement('code');
+  code.className = 'language-bash';
+  code.textContent = command;
+
+  header.appendChild(title);
+  header.appendChild(copyButton);
+  pre.appendChild(code);
+  wrapper.appendChild(header);
+  wrapper.appendChild(pre);
+
+  return wrapper;
+}
+
+function renderCommandList(element, commands) {
+  if (!element) {
+    return;
+  }
+
+  const values = Array.isArray(commands) && commands.length > 0 ? commands : ['No verification commands returned.'];
+  element.innerHTML = '';
+
+  values.forEach((command) => {
+    const li = document.createElement('li');
+    li.className = 'command-list-item';
+    li.appendChild(createCommandBlock(String(command), 'bash'));
+    element.appendChild(li);
+  });
+}
+
+function parseSafeCommandStep(step) {
+  const text = String(step || '');
+  const prefix = 'Safe command to verify manually:';
+
+  if (!text.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return null;
+  }
+
+  return text.slice(prefix.length).trim();
 }
 
 async function recordTimelineEvent(type, category, severity, description, metadata = {}) {
@@ -3491,7 +3558,19 @@ if (timelineList) {
   if (data.recommendedSteps && data.recommendedSteps.length > 0) {
     data.recommendedSteps.forEach(step => {
       const li = document.createElement('li');
-      li.textContent = step;
+      const safeCommand = parseSafeCommandStep(step);
+
+      if (safeCommand) {
+        li.className = 'command-list-item';
+        const note = document.createElement('span');
+        note.className = 'command-note';
+        note.textContent = 'Safe command to verify manually:';
+        li.appendChild(note);
+        li.appendChild(createCommandBlock(safeCommand, 'bash'));
+      } else {
+        li.textContent = step;
+      }
+
       stepsList.appendChild(li);
     });
   } else {
@@ -3624,6 +3703,35 @@ copyCommandsBtn.addEventListener('click', () => {
   });
 });
 
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-copy-command], [data-copy-command-encoded]');
+
+  if (!button) {
+    return;
+  }
+
+  const command = button.dataset.copyCommandEncoded
+    ? decodeURIComponent(button.dataset.copyCommandEncoded)
+    : (button.dataset.copyCommand || '');
+
+  navigator.clipboard.writeText(command).then(() => {
+    const originalText = button.textContent;
+    button.textContent = 'Copied';
+    button.classList.add('copied');
+
+    setTimeout(() => {
+      button.textContent = originalText || 'Copy';
+      button.classList.remove('copied');
+    }, 1600);
+  }).catch(() => {
+    button.textContent = 'Copy failed';
+
+    setTimeout(() => {
+      button.textContent = 'Copy';
+    }, 1600);
+  });
+});
+
 // ==========================================
 // INCIDENT REPORT WORKFLOW (POST /api/generate-report)
 // ==========================================
@@ -3705,7 +3813,7 @@ genRemediationBtn?.addEventListener('click', generateRemediationPlan);
 
 function renderRemediationPlan(plan) {
   renderPlainList(remediationActions, plan.immediateActions);
-  renderPlainList(remediationCommands, plan.verificationCommands);
+  renderCommandList(remediationCommands, plan.verificationCommands);
   renderPlainList(remediationRollback, plan.rollbackPlan);
   renderPlainList(remediationRisks, plan.riskNotes);
   renderPlainList(remediationEscalation, plan.escalationCriteria);

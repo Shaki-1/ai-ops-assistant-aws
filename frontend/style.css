@@ -2122,6 +2122,64 @@ button {
   max-height: 450px;
 }
 
+.command-list-item {
+  list-style: none;
+  margin-left: 0;
+}
+
+.command-note {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  margin-bottom: 0.45rem;
+}
+
+.command-copy-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  margin: 0.4rem 0 0.65rem;
+}
+
+.command-copy-header {
+  min-height: 34px;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.command-code-block {
+  margin: 0;
+  padding: 0.8rem;
+  overflow-x: auto;
+  background: #060913;
+  color: #dbeafe;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.command-code-block code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme="light"] .command-copy-card {
+  background: rgba(15, 23, 42, 0.035);
+}
+
+:root[data-theme="light"] .command-code-block {
+  background: #f8fafc;
+  color: #1f2937;
+}
+
 :root[data-theme="light"] .terminal-box,
 :root[data-theme="light"] .report-paper {
   background-color: #f8fafc;
