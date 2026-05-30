@@ -1140,7 +1140,7 @@ function authenticateToken(req, res, next) {
 
     next();
   } catch (error) {
-    return res.status(403).json({
+    return res.status(401).json({
       error: 'Invalid or expired token.'
     });
   }
@@ -1228,6 +1228,14 @@ app.post('/api/login', loginRateLimit, async (req, res) => {
     role: matchedUser.role,
     severity: 'Info',
     description: `${matchedUser.role} login succeeded.`
+  });
+});
+
+app.get('/api/me', authenticateToken, (req, res) => {
+  res.json({
+    valid: true,
+    username: req.user.username,
+    role: req.user.role === 'admin' ? 'admin' : 'user'
   });
 });
 
@@ -2230,13 +2238,10 @@ wss.on('connection', (socket, request) => {
     sendInboxUnreadCount(socket);
   } else {
     socket.send(JSON.stringify({
-      type: 'auth_required'
+      type: 'auth_failed',
+      reason: 'Invalid or missing token.'
     }));
-    setTimeout(() => {
-      if (!socket.user && socket.readyState === WebSocket.OPEN) {
-        socket.close(1008, 'Unauthorized');
-      }
-    }, 5000);
+    socket.close(1008, 'Unauthorized');
   }
 
   socket.on('pong', () => {

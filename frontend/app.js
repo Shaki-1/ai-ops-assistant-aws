@@ -78,10 +78,12 @@ loginForm.addEventListener('submit', async (event) => {
     localStorage.setItem('authToken', data.token);
     localStorage.setItem('userRole', data.user?.role || 'user');
     localStorage.setItem('username', data.user?.username || username);
-    loginScreen.classList.add('hidden');
-    applyRoleAccess();
-    startAuthenticatedSession();
-    restoreSavedView();
+
+    const isValid = await validateSavedSession();
+
+    if (!isValid) {
+      throw new Error('Session validation failed');
+    }
 
   } catch (error) {
     loginError.textContent = 'Invalid username or password.';
@@ -599,6 +601,11 @@ let liveReconnectTimerId = null;
 let liveReconnectAttempt = 0;
 let isLiveConnected = false;
 let isLiveDisconnecting = false;
+let isSessionValidated = false;
+let validatedSessionRole = 'user';
+let validatedSessionUsername = '';
+let liveDisconnectWarningShown = false;
+let liveAuthFailed = false;
 
 const METRICS_REFRESH_MS = 3000;
 const HEALTH_REFRESH_MS = 3000;
@@ -607,6 +614,8 @@ const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 const ACTIVITY_EVENTS = ['mousemove', 'click', 'keypress', 'scroll', 'touchstart'];
 const INBOX_REFRESH_MS = 10000;
 const INBOX_NOTIFICATION_REFRESH_MS = 15 * 60 * 1000;
+
+// TODO: This training app currently stores JWTs in localStorage. A production deployment should prefer secure httpOnly cookies.
 
 // Element Selectors
 const uptimeVal = document.getElementById('uptime-value');
@@ -1286,16 +1295,145 @@ function clearMetricsError() {
   metricsError?.classList.add('hidden');
 }
 
-function handleExpiredSession() {
+function clearAuthState() {
   stopAuthenticatedSession();
   localStorage.removeItem('authToken');
+  localStorage.removeItem('userRole');
+  localStorage.removeItem('username');
   localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  isSessionValidated = false;
+  validatedSessionRole = 'user';
+  validatedSessionUsername = '';
+}
+
+function handleExpiredSession(message = 'Session expired. Please log in again.') {
+  clearAuthState();
+  updateLiveStatus('expired');
   if (loginError) {
-    loginError.textContent = 'Session expired. Please log in again.';
+    loginError.textContent = message;
     loginError.classList.remove('hidden');
   }
   loginScreen.classList.remove('hidden');
+  applyRoleAccess();
   showAnalyzerView({ persist: false });
+}
+
+function handleForbiddenResponse(options = {}) {
+  const { redirectToAnalyzer = true, message = 'Not authorized for this view.' } = options;
+
+  if (metricsError && !metricsDashboardView?.classList.contains('hidden')) {
+    showMetricsError(message);
+  }
+
+  if (ticketStatus && !inboxView?.classList.contains('hidden')) {
+    ticketStatus.textContent = message;
+    ticketStatus.classList.remove('hidden');
+  }
+
+  if (redirectToAnalyzer && ['dashboard', 'security', 'timeline'].includes(getSavedView())) {
+    showAnalyzerView();
+  }
+
+  applyRoleAccess();
+}
+
+async function apiFetch(path, options = {}) {
+  const {
+    auth = true,
+    adminOnly = false,
+    onForbidden = 'throw',
+    ...fetchOptions
+  } = options;
+
+  if (adminOnly && !isAdminUser()) {
+    const error = new Error('Not authorized for this view.');
+    error.status = 403;
+    if (onForbidden !== 'throw') {
+      handleForbiddenResponse({ redirectToAnalyzer: onForbidden === 'redirect' });
+      return null;
+    }
+    throw error;
+  }
+
+  const headers = new Headers(fetchOptions.headers || {});
+
+  if (auth) {
+    const token = localStorage.getItem('authToken');
+
+    if (!token) {
+      handleExpiredSession();
+      const error = new Error('Session expired.');
+      error.status = 401;
+      throw error;
+    }
+
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...fetchOptions,
+    headers
+  });
+
+  if (response.status === 401) {
+    handleExpiredSession();
+    return null;
+  } else if (response.status === 403) {
+    handleForbiddenResponse({ redirectToAnalyzer: onForbidden === 'redirect' });
+    if (onForbidden !== 'throw') {
+      return null;
+    }
+    const error = new Error('Not authorized for this view.');
+    error.status = 403;
+    throw error;
+  }
+
+  return response;
+}
+
+async function validateSavedSession(options = {}) {
+  const { restoreView = true } = options;
+  const token = localStorage.getItem('authToken');
+
+  if (!token) {
+    clearAuthState();
+    loginScreen.classList.remove('hidden');
+    applyRoleAccess();
+    showAnalyzerView({ persist: false });
+    return false;
+  }
+
+  try {
+    const response = await apiFetch('/me', { onForbidden: 'throw' });
+
+    if (!response || !response.ok) {
+      throw new Error(`Session validation failed with ${response?.status || 'no response'}`);
+    }
+
+    const data = await response.json();
+    validatedSessionRole = data.role === 'admin' ? 'admin' : 'user';
+    validatedSessionUsername = data.username || '';
+    localStorage.setItem('userRole', validatedSessionRole);
+    localStorage.setItem('username', validatedSessionUsername);
+    isSessionValidated = true;
+    liveAuthFailed = false;
+    liveDisconnectWarningShown = false;
+    loginScreen.classList.add('hidden');
+    applyRoleAccess();
+    startAuthenticatedSession();
+
+    if (restoreView) {
+      restoreSavedView();
+    }
+
+    return true;
+  } catch (error) {
+    if (error.status !== 401 && error.status !== 403) {
+      console.warn('[AUTH] Saved session validation failed. Returning to login.');
+    }
+    handleExpiredSession('Session expired. Please log in again.');
+    return false;
+  }
 }
 
 function appendMetricPoint(chart, label, value) {
@@ -1410,19 +1548,16 @@ function renderPlainList(element, items) {
 }
 
 async function recordTimelineEvent(type, category, severity, description, metadata = {}) {
-  const token = localStorage.getItem('authToken');
-
-  if (!token) {
+  if (!hasValidatedSession()) {
     return;
   }
 
   try {
-    await fetch(`${API_BASE_URL}/timeline`, {
+    await apiFetch('/timeline', {
       method: 'POST',
       keepalive: true,
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         type,
@@ -1553,13 +1688,9 @@ async function refreshSecurityCenter() {
     status.apiOk = false;
   }
 
-  if (token) {
+  if (token && isAdminUser()) {
     try {
-      const response = await fetch(`${API_BASE_URL}/metrics`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await apiFetch('/metrics', { adminOnly: true, onForbidden: 'ignore' });
       status.metricsOk = response.ok;
     } catch {
       status.metricsOk = false;
@@ -1631,9 +1762,7 @@ function renderSecurityAiReview(review) {
 }
 
 async function reviewSecurityPostureWithAI() {
-  const token = localStorage.getItem('authToken');
-
-  if (!token) {
+  if (!hasValidatedSession()) {
     renderSecurityAiReview(getFallbackSecurityReview(latestSecurityStatus));
     return;
   }
@@ -1664,16 +1793,19 @@ Return concise defensive guidance with:
 - what needs attention
 - priority next steps`;
 
-    const response = await fetch(`${API_BASE_URL}/analyze-log`, {
+    const response = await apiFetch('/analyze-log', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         logText: prompt
       })
     });
+
+    if (!response) {
+      return;
+    }
 
     if (!response.ok) {
       throw new Error(`Security review failed with ${response.status}`);
@@ -1721,7 +1853,8 @@ function updateLiveStatus(status) {
   const labels = {
     connected: 'Live connected',
     reconnecting: 'Live reconnecting',
-    fallback: 'Live fallback'
+    fallback: 'Live fallback',
+    expired: 'Session expired'
   };
   liveStatusBadge.textContent = labels[normalizedStatus] || labels.fallback;
   liveStatusBadge.className = `live-status-badge live-${normalizedStatus}`;
@@ -1742,7 +1875,7 @@ function stopMetricsPolling() {
 }
 
 function startRestFallbackPolling() {
-  if (!localStorage.getItem('authToken') || isLiveConnected) return;
+  if (!hasValidatedSession() || isLiveConnected) return;
 
   if (!metricsPollIntervalId) {
     if (!isLiveConnected) {
@@ -1798,7 +1931,7 @@ function handleLiveMessage(data) {
 
 function connectLiveUpdates() {
   const token = localStorage.getItem('authToken');
-  if (!token || liveSocket) return;
+  if (!token || !isSessionValidated || liveSocket || liveAuthFailed) return;
 
   updateLiveStatus(liveReconnectAttempt ? 'reconnecting' : 'fallback');
 
@@ -1807,7 +1940,10 @@ function connectLiveUpdates() {
     const liveUrl = getWebSocketUrl();
     liveSocket = new WebSocket(liveUrl);
   } catch (error) {
-    console.warn('[LIVE] Could not create WebSocket connection. REST fallback remains active.', error);
+    if (!liveDisconnectWarningShown) {
+      console.warn('[LIVE] Could not create WebSocket connection. REST fallback remains active.');
+      liveDisconnectWarningShown = true;
+    }
     liveSocket = null;
     scheduleLiveReconnect();
     startRestFallbackPolling();
@@ -1817,6 +1953,7 @@ function connectLiveUpdates() {
   liveSocket.addEventListener('open', () => {
     isLiveConnected = true;
     liveReconnectAttempt = 0;
+    liveDisconnectWarningShown = false;
     updateLiveStatus('connected');
     stopMetricsPolling();
     stopInboxNotificationPolling();
@@ -1825,13 +1962,20 @@ function connectLiveUpdates() {
 
   liveSocket.addEventListener('message', (event) => {
     try {
-      handleLiveMessage(JSON.parse(event.data));
+      const data = JSON.parse(event.data);
+      if (data.type === 'auth_failed') {
+        liveAuthFailed = true;
+        updateLiveStatus('expired');
+        handleExpiredSession();
+        return;
+      }
+      handleLiveMessage(data);
     } catch {
       // Ignore malformed live updates.
     }
   });
 
-  liveSocket.addEventListener('close', () => {
+  liveSocket.addEventListener('close', (event) => {
     liveSocket = null;
     isLiveConnected = false;
 
@@ -1840,20 +1984,33 @@ function connectLiveUpdates() {
       return;
     }
 
+    if (event.code === 1008) {
+      liveAuthFailed = true;
+      updateLiveStatus('expired');
+      handleExpiredSession();
+      return;
+    }
+
     updateLiveStatus('fallback');
-    console.warn('[LIVE] WebSocket disconnected. Using REST fallback and retrying in the background.');
+    if (!liveDisconnectWarningShown) {
+      console.warn('[LIVE] WebSocket unavailable. REST fallback remains active while reconnect runs in the background.');
+      liveDisconnectWarningShown = true;
+    }
     startRestFallbackPolling();
     scheduleLiveReconnect();
   });
 
-  liveSocket.addEventListener('error', (event) => {
-    console.warn('[LIVE] WebSocket connection failed. Check /ws proxy support, ws dependency install, and JWT auth. REST fallback remains active.', event);
+  liveSocket.addEventListener('error', () => {
+    if (!liveDisconnectWarningShown) {
+      console.warn('[LIVE] WebSocket connection failed. REST fallback remains active.');
+      liveDisconnectWarningShown = true;
+    }
     updateLiveStatus('fallback');
   });
 }
 
 function scheduleLiveReconnect() {
-  if (!localStorage.getItem('authToken') || liveReconnectTimerId) return;
+  if (!localStorage.getItem('authToken') || !isSessionValidated || liveAuthFailed || liveReconnectTimerId) return;
 
   liveReconnectAttempt += 1;
   const delay = Math.min(30000, 1000 * (2 ** Math.min(liveReconnectAttempt, 5)));
@@ -1877,6 +2034,8 @@ function disconnectLiveUpdates() {
 
   isLiveConnected = false;
   liveReconnectAttempt = 0;
+  liveAuthFailed = false;
+  liveDisconnectWarningShown = false;
   updateLiveStatus('fallback');
 }
 
@@ -1979,22 +2138,16 @@ function renderAlertCard(alert, isActive) {
 }
 
 async function refreshAlerts() {
-  const token = localStorage.getItem('authToken');
-
-  if (!token || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     updateDashboardAlertBadge(0);
     return;
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/alerts`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const response = await apiFetch('/alerts', { adminOnly: true, onForbidden: 'ignore' });
 
-    if (!response.ok) {
-      throw new Error(`Alerts request failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Alerts request failed with ${response?.status || 'no response'}`);
     }
 
     const data = await response.json();
@@ -2005,22 +2158,19 @@ async function refreshAlerts() {
 }
 
 async function acknowledgeAlert(alertId) {
-  const token = localStorage.getItem('authToken');
-
-  if (!token) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     return;
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/acknowledge`, {
+    const response = await apiFetch(`/alerts/${alertId}/acknowledge`, {
       method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      adminOnly: true,
+      onForbidden: 'ignore'
     });
 
-    if (!response.ok) {
-      throw new Error(`Alert acknowledge failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Alert acknowledge failed with ${response?.status || 'no response'}`);
     }
 
     await refreshAlerts();
@@ -2059,9 +2209,7 @@ function getFallbackAlertsAnalysis(alerts = []) {
 }
 
 async function analyzeAlertsWithAI() {
-  const token = localStorage.getItem('authToken');
-
-  if (!token || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     showMetricsError('Admin access required for alert analysis.');
     return;
   }
@@ -2079,11 +2227,12 @@ async function analyzeAlertsWithAI() {
     }
 
     const activeAlerts = latestAlerts.filter((alert) => alert.status === 'Active');
-    const response = await fetch(`${API_BASE_URL}/analyze-alerts`, {
+    const response = await apiFetch('/analyze-alerts', {
       method: 'POST',
+      adminOnly: true,
+      onForbidden: 'ignore',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         alerts: activeAlerts,
@@ -2091,8 +2240,8 @@ async function analyzeAlertsWithAI() {
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`Alert AI request failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Alert AI request failed with ${response?.status || 'no response'}`);
     }
 
     renderAiAlertsAnalysis(await response.json());
@@ -2279,9 +2428,7 @@ function updateOperationalMetrics(metrics) {
 }
 
 async function pollMetrics() {
-  const token = localStorage.getItem('authToken');
-
-  if (!token) {
+  if (!hasValidatedSession()) {
     showMetricsError('Session expired. Please log in again.');
     handleExpiredSession();
     return;
@@ -2302,20 +2449,10 @@ async function pollMetrics() {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/metrics`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
+    const response = await apiFetch('/metrics', { adminOnly: true, onForbidden: 'ignore' });
 
-    if (response.status === 401 || response.status === 403) {
-      showMetricsError('Session expired. Please log in again.');
-      handleExpiredSession();
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Metrics request failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Metrics request failed with ${response?.status || 'no response'}`);
     }
 
     const metrics = await response.json();
@@ -2327,9 +2464,7 @@ async function pollMetrics() {
 }
 
 async function analyzeMetricsWithAI() {
-  const token = localStorage.getItem('authToken');
-
-  if (!token) {
+  if (!hasValidatedSession()) {
     showMetricsError('Session expired. Please log in again.');
     handleExpiredSession();
     return;
@@ -2351,25 +2486,20 @@ async function analyzeMetricsWithAI() {
       throw new Error('No live metrics payload is available yet.');
     }
 
-    const response = await fetch(`${API_BASE_URL}/analyze-metrics`, {
+    const response = await apiFetch('/analyze-metrics', {
       method: 'POST',
+      adminOnly: true,
+      onForbidden: 'ignore',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         metrics: latestMetrics
       })
     });
 
-    if (response.status === 401 || response.status === 403) {
-      showMetricsError('Session expired. Please log in again.');
-      handleExpiredSession();
-      return;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Metrics AI analysis failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Metrics AI analysis failed with ${response?.status || 'no response'}`);
     }
 
     const data = await response.json();
@@ -2520,7 +2650,7 @@ function setSimulationMode(isEnabled, options = {}) {
     return;
   }
 
-  if (isEnabled && localStorage.getItem('authToken')) {
+  if (isEnabled && hasValidatedSession()) {
     showSimulationLab();
   } else if (!isEnabled) {
     showAnalyzerView();
@@ -2528,7 +2658,7 @@ function setSimulationMode(isEnabled, options = {}) {
 }
 
 function restoreSavedView() {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     return;
   }
 
@@ -2550,7 +2680,7 @@ function restoreSavedView() {
 }
 
 function showMetricsDashboard(options = {}) {
-  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     return;
   }
 
@@ -2604,7 +2734,7 @@ function returnHomeToAnalyzer() {
 }
 
 function showSimulationLab(options = {}) {
-  if (!localStorage.getItem('authToken') || !isSimulationModeEnabled()) {
+  if (!hasValidatedSession() || !isSimulationModeEnabled()) {
     return;
   }
 
@@ -2626,7 +2756,7 @@ function showSimulationLab(options = {}) {
 }
 
 function showSecurityCenter(options = {}) {
-  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     return;
   }
 
@@ -2650,7 +2780,7 @@ function showSecurityCenter(options = {}) {
 }
 
 function showInboxView(options = {}) {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     return;
   }
 
@@ -2674,7 +2804,7 @@ function showInboxView(options = {}) {
 }
 
 function showTimelineView(options = {}) {
-  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     return;
   }
 
@@ -2698,7 +2828,7 @@ function showTimelineView(options = {}) {
 }
 
 function showGovernanceView(options = {}) {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     return;
   }
 
@@ -2876,11 +3006,7 @@ function cancelActiveAnalysis() {
 function performSessionLogout() {
   recordTimelineEvent('logout', 'Auth', 'Info', 'User logged out from the browser session.');
   cancelActiveAnalysis();
-  stopAuthenticatedSession();
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('userRole');
-  localStorage.removeItem('username');
-  localStorage.setItem(VIEW_STORAGE_KEY, DEFAULT_VIEW);
+  clearAuthState();
   setSimulationMode(false);
   applyRoleAccess();
   showAnalyzerView({ persist: false });
@@ -2901,15 +3027,19 @@ function handleInactivityLogout() {
 }
 
 function getCurrentRole() {
-  return localStorage.getItem('userRole') === 'admin' ? 'admin' : 'user';
+  return isSessionValidated && validatedSessionRole === 'admin' ? 'admin' : 'user';
 }
 
 function isAdminUser() {
   return getCurrentRole() === 'admin';
 }
 
+function hasValidatedSession() {
+  return Boolean(localStorage.getItem('authToken')) && isSessionValidated;
+}
+
 function applyRoleAccess() {
-  const hasToken = Boolean(localStorage.getItem('authToken'));
+  const hasToken = hasValidatedSession();
   const isAdmin = hasToken && isAdminUser();
 
   if (roleBadge) {
@@ -2959,7 +3089,7 @@ function applyRoleAccess() {
 }
 
 function resetInactivityTimer() {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     return;
   }
 
@@ -2986,7 +3116,7 @@ function stopInboxPolling() {
 }
 
 function startInboxNotificationPolling() {
-  if (!localStorage.getItem('authToken') || inboxNotificationPollIntervalId) {
+  if (!hasValidatedSession() || inboxNotificationPollIntervalId) {
     return;
   }
 
@@ -3003,7 +3133,7 @@ function stopInboxNotificationPolling() {
 }
 
 function startAuthenticatedSession() {
-  if (!localStorage.getItem('authToken')) {
+  if (!localStorage.getItem('authToken') || !isSessionValidated) {
     return;
   }
 
@@ -3052,12 +3182,11 @@ function stopAuthenticatedSession() {
   updateDashboardAlertBadge(0);
 }
 
-startAuthenticatedSession();
 setSimulationMode(isSimulationModeEnabled(), { navigate: false });
 applyRoleAccess();
-restoreSavedView();
 applyTheme(localStorage.getItem('themePreference') || 'dark');
 initializeOperationsPanelState();
+validateSavedSession();
 
 // ==========================================
 // INTERACTIVE EVENT LISTENERS & LOGIC
@@ -3233,17 +3362,20 @@ async function analyzeCurrentInput() {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/analyze-log`, {
+    const response = await apiFetch('/analyze-log', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         logText: rawLogText
       }),
       signal: activeAnalysisAbortController.signal
     });
+
+    if (!response) {
+      return;
+    }
 
     if (!response.ok) {
       throw new Error(`Server returned HTTP ${response.status}`);
@@ -3424,11 +3556,12 @@ genCommandsBtn.addEventListener('click', async () => {
   }
 
   try {
-  const response = await fetch(`${API_BASE_URL}/generate-commands`, {
+  const response = await apiFetch('/generate-commands', {
     method: 'POST',
+    adminOnly: true,
+    onForbidden: 'ignore',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       logText: currentActiveLog,
@@ -3436,7 +3569,7 @@ genCommandsBtn.addEventListener('click', async () => {
     })
   });
 
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    if (!response || !response.ok) throw new Error(`HTTP error ${response?.status || 'no response'}`);
 
     const data = await response.json();
     generatedCommandsText = data.commandsMarkdown;
@@ -3521,11 +3654,12 @@ genReportBtn.addEventListener('click', async () => {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/generate-report`, {
+    const response = await apiFetch('/generate-report', {
        method: 'POST',
+      adminOnly: true,
+      onForbidden: 'ignore',
   headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+    'Content-Type': 'application/json'
   },
       body: JSON.stringify({
         logText: currentActiveLog,
@@ -3535,7 +3669,7 @@ genReportBtn.addEventListener('click', async () => {
 
 
 
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    if (!response || !response.ok) throw new Error(`HTTP error ${response?.status || 'no response'}`);
 
     const data = await response.json();
 
@@ -3617,11 +3751,10 @@ async function generateRemediationPlan() {
   remediationContent?.classList.add('hidden');
 
   try {
-    const response = await fetch(`${API_BASE_URL}/remediation-plan`, {
+    const response = await apiFetch('/remediation-plan', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         analysis: activeAnalysisResult,
@@ -3630,8 +3763,8 @@ async function generateRemediationPlan() {
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`Remediation failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Remediation failed with ${response?.status || 'no response'}`);
     }
 
     renderRemediationPlan(await response.json());
@@ -3711,7 +3844,9 @@ function writeGovernanceAcknowledgements(entries) {
 }
 
 function getCurrentUsername() {
-  const storedUsername = localStorage.getItem('username');
+  const storedUsername = isSessionValidated
+    ? validatedSessionUsername
+    : localStorage.getItem('username');
 
   if (storedUsername) {
     return storedUsername;
@@ -3757,7 +3892,7 @@ function acknowledgeGovernanceGuidance() {
   entries.unshift({
     timestamp: new Date().toISOString(),
     username: getCurrentUsername(),
-    role: localStorage.getItem('userRole') || 'unknown',
+    role: getCurrentRole(),
     version: GOVERNANCE_VERSION
   });
   writeGovernanceAcknowledgements(entries);
@@ -3837,19 +3972,15 @@ function renderTimelineEvents() {
 }
 
 async function loadTimelineEvents() {
-  if (!localStorage.getItem('authToken') || !isAdminUser()) {
+  if (!hasValidatedSession() || !isAdminUser()) {
     return;
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/timeline`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      }
-    });
+    const response = await apiFetch('/timeline', { adminOnly: true, onForbidden: 'redirect' });
 
-    if (!response.ok) {
-      throw new Error(`Timeline failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Timeline failed with ${response?.status || 'no response'}`);
     }
 
     incidentTimelineEvents = await response.json();
@@ -3902,21 +4033,20 @@ function updateInboxNotificationBadge(count) {
 
 async function fetchTicketsForCurrentRole() {
   const endpoint = isAdminUser() ? '/tickets/admin' : '/tickets/my';
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    headers: {
-      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-    }
+  const response = await apiFetch(endpoint, {
+    adminOnly: endpoint === '/tickets/admin',
+    onForbidden: endpoint === '/tickets/admin' ? 'redirect' : 'throw'
   });
 
-  if (!response.ok) {
-    throw new Error(`Tickets failed with ${response.status}`);
+  if (!response || !response.ok) {
+    throw new Error(`Tickets failed with ${response?.status || 'no response'}`);
   }
 
   return response.json();
 }
 
 async function refreshInboxNotificationStatus() {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     updateInboxNotificationBadge(0);
     return;
   }
@@ -4003,7 +4133,7 @@ function renderTickets(tickets = []) {
 }
 
 async function loadTickets() {
-  if (!localStorage.getItem('authToken')) {
+  if (!hasValidatedSession()) {
     return;
   }
 
@@ -4034,11 +4164,10 @@ async function submitTicketToAdmin() {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/tickets`, {
+    const response = await apiFetch('/tickets', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         type: ticketType?.value || 'feedback',
@@ -4046,8 +4175,8 @@ async function submitTicketToAdmin() {
       })
     });
 
-    if (!response.ok) {
-      throw new Error(`Feedback failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Feedback failed with ${response?.status || 'no response'}`);
     }
 
     ticketMessage.value = '';
@@ -4070,11 +4199,16 @@ async function submitTicketToAdmin() {
 }
 
 async function updateTicketStatus(ticketId, status) {
-  await fetch(`${API_BASE_URL}/tickets/${ticketId}/status`, {
+  if (!isAdminUser()) {
+    return;
+  }
+
+  await apiFetch(`/tickets/${ticketId}/status`, {
     method: 'PATCH',
+    adminOnly: true,
+    onForbidden: 'ignore',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ status })
   });
@@ -4090,11 +4224,10 @@ async function replyToTicket(ticketId) {
     return;
   }
 
-  await fetch(`${API_BASE_URL}/tickets/${ticketId}/reply`, {
+  await apiFetch(`/tickets/${ticketId}/reply`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ message })
   });
@@ -4104,15 +4237,12 @@ async function replyToTicket(ticketId) {
 
 async function markTicketRead(ticketId) {
   try {
-    const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}/read`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      }
+    const response = await apiFetch(`/tickets/${ticketId}/read`, {
+      method: 'PATCH'
     });
 
-    if (!response.ok) {
-      throw new Error(`Mark read failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Mark read failed with ${response?.status || 'no response'}`);
     }
 
     await loadTickets();
@@ -4133,15 +4263,12 @@ async function deleteTicket(ticketId) {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/tickets/${ticketId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      }
+    const response = await apiFetch(`/tickets/${ticketId}`, {
+      method: 'DELETE'
     });
 
-    if (!response.ok) {
-      throw new Error(`Delete failed with ${response.status}`);
+    if (!response || !response.ok) {
+      throw new Error(`Delete failed with ${response?.status || 'no response'}`);
     }
 
     await loadTickets();
@@ -4177,11 +4304,12 @@ async function saveHistoryEntry(input, result) {
   };
 
   try {
-    await fetch(`${API_BASE_URL}/history`, {
+    await apiFetch('/history', {
       method: 'POST',
+      adminOnly: true,
+      onForbidden: 'ignore',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify(entry)
     });
@@ -4223,11 +4351,10 @@ async function renderHistory() {
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/history`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-      }
-    });
+    const response = await apiFetch('/history', { adminOnly: true, onForbidden: 'ignore' });
+    if (!response || !response.ok) {
+      throw new Error(`History failed with ${response?.status || 'no response'}`);
+    }
     const history = await response.json();
 
     historyList.innerHTML = '';
