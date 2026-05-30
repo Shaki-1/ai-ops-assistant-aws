@@ -22,7 +22,11 @@ jobs:
 
             cd /home/ec2-user/ai-ops-assistant-aws
 
-            git pull origin main
+            # EC2 is a deployment target, not a development working tree.
+            # Tracked local modifications from chmod, user-data, or manual recovery should not block deploys.
+            # App data lives in untracked paths such as backend/data and backups, so this does not remove SQLite/runtime data.
+            git fetch origin main
+            git reset --hard origin/main
 
             cd backend
             npm install
