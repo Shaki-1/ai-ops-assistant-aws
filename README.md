@@ -20,7 +20,7 @@
 
 AI Ops Assistant is a training-focused DevOps and server operations dashboard for analyzing logs, reviewing server health, simulating incidents, managing support tickets, and deploying a small AWS-hosted application with Terraform.
 
-The project combines a static frontend, Node.js/Express backend, JWT-based role access, WebSocket live updates, Nginx reverse proxying, PM2 process management, DuckDNS, Certbot/Let's Encrypt, GitHub Actions deployment, and file-backed JSON storage.
+The project combines a static frontend, Node.js/Express backend, JWT-based role access, WebSocket live updates, Nginx reverse proxying, PM2 process management, DuckDNS, Certbot/Let's Encrypt, GitHub Actions deployment, and SQLite persistence.
 
 No private values belong in this repository. Use placeholders in documentation and keep real `.env`, `terraform.tfvars`, SSH keys, Terraform state, API keys, tokens, and passwords out of Git.
 
@@ -44,7 +44,7 @@ No private values belong in this repository. Use placeholders in documentation a
 - Incident Timeline / Activity Feed
 - AI-generated remediation plans
 - Governance & Data Use guidance with local acknowledgement export
-- Backup/export/import workflow for file-backed app data
+- Backup/export/import workflow for SQLite app data
 - Terraform AWS EC2 deployment
 - GitHub Actions deployment
 - Deployment diagnostics script
@@ -65,7 +65,7 @@ Node.js/Express backend managed by PM2
   |-- JWT auth and RBAC
   |-- AI analysis endpoints
   |-- metrics and alert engine
-  |-- file-backed JSON storage
+  |-- SQLite app data storage
   v
 Groq/OpenAI-compatible AI provider
 ```
@@ -82,7 +82,7 @@ Infrastructure and deployment pieces:
 - HTTPS: Certbot/Let's Encrypt
 - Infrastructure: Terraform EC2 using Amazon Linux 2023 auto-discovery
 - CI/CD: GitHub Actions SSH deployment
-- Data: local JSON files for tickets, timeline, history, alerts/runtime state
+- Data: local SQLite database for tickets, timeline, history, and alerts
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
@@ -193,7 +193,7 @@ HTTPS depends on DuckDNS resolving to the EC2 public IP and Let's Encrypt rate l
 
 ## Limitations
 
-- Storage is file-backed JSON, not a database.
+- SQLite is local to the EC2 instance unless exported or copied elsewhere.
 - EC2-local data is lost after `terraform destroy` unless exported before destroy and imported after rebuild.
 - HTTPS issuance depends on DuckDNS propagation and Let's Encrypt rate limits.
 - Quick Checks are diagnostic/training samples unless a real collector agent is added.
@@ -201,7 +201,7 @@ HTTPS depends on DuckDNS resolving to the EC2 public IP and Let's Encrypt rate l
 
 ## Roadmap
 
-- SQLite or PostgreSQL persistence
+- Managed database or S3-backed backup automation
 - Real Linux collector agent
 - Multi-server support
 - PDF incident reports

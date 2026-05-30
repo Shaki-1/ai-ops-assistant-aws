@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import os from 'os';
-import fs from 'fs';
 import http from 'http';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -18,6 +17,24 @@ import {
   COMMAND_GENERATOR_PROMPT,
   REPORT_GENERATOR_PROMPT
 } from './prompts/systemPrompt.js';
+import {
+  addHistoryEntry,
+  addTimelineEvent,
+  clearAcknowledgedAlertValue,
+  countActiveAlerts,
+  countUnreadTicketsFor,
+  findActiveAlertByType,
+  findAlertById,
+  getAcknowledgedAlertValue,
+  initializeStorage,
+  listAlerts,
+  listHistoryEntries,
+  listTickets,
+  listTimelineEvents,
+  replaceTickets,
+  saveAlert,
+  setAcknowledgedAlertValue
+} from './db.js';
 
 
 // Load environment variables
@@ -32,7 +49,6 @@ const USER_USERNAME = process.env.USER_USERNAME || 'user';
 const USER_PASSWORD_HASH = process.env.USER_PASSWORD_HASH || '';
 const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || 'change_me_in_production';
 const wsClients = new Set();
-const DATA_DIR = './data';
 const MAX_TEXT_INPUT = 20000;
 const rateLimitBuckets = new Map();
 
@@ -43,9 +59,6 @@ const apiRuntimeMetrics = {
   successfulAIAnalyses: 0,
   failedAIAnalyses: 0
 };
-
-const operationalAlerts = [];
-const acknowledgedAlertValues = new Map();
 
 const ALERT_THRESHOLDS = {
   cpuWarning: 75,
@@ -60,51 +73,7 @@ const ALERT_THRESHOLDS = {
   aiFailuresWarning: 0
 };
 
-const TIMELINE_DIR = DATA_DIR;
-const TIMELINE_FILE = './data/timeline.json';
-
-function ensureSafeJsonPath(filePath) {
-  const normalized = filePath.replace(/\\/g, '/');
-  const allowed = ['./data/', 'data/', './history.json', 'history.json'];
-
-  if (!allowed.some((prefix) => normalized.startsWith(prefix) || normalized === prefix)) {
-    throw new Error('Unsafe storage path rejected.');
-  }
-}
-
-async function readJsonFile(filePath, fallbackValue) {
-  ensureSafeJsonPath(filePath);
-
-  try {
-    const raw = await fs.promises.readFile(filePath, 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return fallbackValue;
-    }
-
-    if (error instanceof SyntaxError) {
-      const corruptPath = `${filePath}.corrupt-${Date.now()}`;
-      try {
-        await fs.promises.rename(filePath, corruptPath);
-        console.warn(`[STORAGE] Corrupted JSON moved to ${corruptPath}`);
-      } catch (renameError) {
-        console.warn('[STORAGE] Could not move corrupted JSON:', renameError.message);
-      }
-      return fallbackValue;
-    }
-
-    throw error;
-  }
-}
-
-async function writeJsonFileAtomic(filePath, value) {
-  ensureSafeJsonPath(filePath);
-  await fs.promises.mkdir(filePath.includes('/data/') || filePath.startsWith('data/') ? DATA_DIR : '.', { recursive: true });
-  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  await fs.promises.writeFile(tempPath, JSON.stringify(value, null, 2), 'utf8');
-  await fs.promises.rename(tempPath, filePath);
-}
+initializeStorage();
 
 function validateText(value, maxLength = MAX_TEXT_INPUT) {
   const text = String(value || '').trim();
@@ -137,13 +106,7 @@ const loginRateLimit = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20, ke
 const aiRateLimit = createRateLimiter({ windowMs: 60 * 1000, max: 20, keyPrefix: 'ai' });
 
 async function readTimelineEvents() {
-  const events = await readJsonFile(TIMELINE_FILE, []);
-  return Array.isArray(events) ? events : [];
-}
-
-async function writeTimelineEvents(events) {
-  await fs.promises.mkdir(TIMELINE_DIR, { recursive: true });
-  await writeJsonFileAtomic(TIMELINE_FILE, events.slice(0, 500));
+  return listTimelineEvents();
 }
 
 async function recordTimelineEvent({
@@ -156,8 +119,7 @@ async function recordTimelineEvent({
   metadata = {}
 }) {
   try {
-    const events = await readTimelineEvents();
-    events.unshift({
+    const event = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       timestamp: new Date().toISOString(),
       type: String(type).slice(0, 80),
@@ -167,9 +129,9 @@ async function recordTimelineEvent({
       severity: String(severity || 'Info').slice(0, 40),
       description: String(description || '').slice(0, 500),
       metadata: sanitizeObject(metadata || {})
-    });
-    await writeTimelineEvents(events);
-    broadcastTimelineEvent(events[0]);
+    };
+    addTimelineEvent(event);
+    broadcastTimelineEvent(event);
   } catch (error) {
     console.warn('[TIMELINE] Could not record event:', error.message);
   }
@@ -611,23 +573,15 @@ function createAlertId(type) {
 }
 
 function getAlertsSnapshot() {
-  return operationalAlerts
-    .slice()
-    .sort((a, b) => {
-      if (a.status !== b.status) {
-        return a.status === 'Active' ? -1 : 1;
-      }
-
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+  return listAlerts();
 }
 
 function getActiveAlertCount() {
-  return operationalAlerts.filter((alert) => alert.status === 'Active').length;
+  return countActiveAlerts();
 }
 
 function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
-  const alert = operationalAlerts.find((item) => item.type === type && item.status === 'Active');
+  const alert = findActiveAlertByType(type);
 
   if (!alert) {
     return;
@@ -635,6 +589,8 @@ function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
 
   alert.status = 'Resolved';
   alert.resolvedAt = resolvedAt;
+  alert.updatedAt = resolvedAt;
+  saveAlert(alert);
   queueTimelineEvent({
     type: 'alert_resolved',
     category: 'Alerts',
@@ -652,15 +608,15 @@ function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
 
 function upsertOperationalAlert(definition) {
   const now = new Date().toISOString();
-  const acknowledgedValue = acknowledgedAlertValues.get(definition.type);
+  const acknowledgedValue = getAcknowledgedAlertValue(definition.type);
 
   if (acknowledgedValue !== undefined && Number(definition.value) <= Number(acknowledgedValue)) {
     return;
   }
 
-  acknowledgedAlertValues.delete(definition.type);
+  clearAcknowledgedAlertValue(definition.type);
 
-  const existing = operationalAlerts.find((alert) => alert.type === definition.type && alert.status === 'Active');
+  const existing = findActiveAlertByType(definition.type);
 
   if (existing) {
     existing.severity = definition.severity;
@@ -669,10 +625,11 @@ function upsertOperationalAlert(definition) {
     existing.value = definition.value;
     existing.threshold = definition.threshold;
     existing.updatedAt = now;
+    saveAlert(existing);
     return;
   }
 
-  operationalAlerts.unshift({
+  saveAlert({
     id: createAlertId(definition.type),
     type: definition.type,
     severity: definition.severity,
@@ -699,9 +656,6 @@ function upsertOperationalAlert(definition) {
     }
   });
 
-  if (operationalAlerts.length > 100) {
-    operationalAlerts.length = 100;
-  }
 }
 
 function evaluateThresholdAlert({ type, value, warning, critical, source, titleBase, unit = '' }) {
@@ -733,7 +687,7 @@ function evaluateThresholdAlert({ type, value, warning, critical, source, titleB
     return;
   }
 
-  acknowledgedAlertValues.delete(type);
+  clearAcknowledgedAlertValue(type);
   resolveActiveAlert(type);
 }
 
@@ -753,7 +707,7 @@ function evaluateCountAlert({ type, value, threshold, source, title, message }) 
     return;
   }
 
-  acknowledgedAlertValues.delete(type);
+  clearAcknowledgedAlertValue(type);
   resolveActiveAlert(type);
 }
 
@@ -1300,7 +1254,7 @@ app.post('/api/timeline', authenticateToken, requireRole('admin', 'user'), async
 });
 
 app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async (req, res) => {
-  const alert = operationalAlerts.find((item) => item.id === req.params.id);
+  const alert = findAlertById(req.params.id);
 
   if (!alert) {
     return res.status(404).json({
@@ -1312,7 +1266,9 @@ app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async 
   alert.acknowledgedAt = new Date().toISOString();
   alert.acknowledgedBy = req.user.username;
   alert.resolvedAt = alert.acknowledgedAt;
-  acknowledgedAlertValues.set(alert.type, Number(alert.value || 0));
+  alert.updatedAt = alert.acknowledgedAt;
+  saveAlert(alert);
+  setAcknowledgedAlertValue(alert.type, Number(alert.value || 0));
   broadcastToAdmins({
     type: 'alerts',
     alerts: getAlertsSnapshot(),
@@ -1891,26 +1847,17 @@ app.post('/api/run-safe-check', authenticateToken, requireAdmin, async (req, res
 // HISTORY STORAGE (NEW FEATURE)
 // ==========================================
 
-const HISTORY_FILE = './history.json';
-
 app.post('/api/history', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const entry = req.body;
-    let history = await readJsonFile(HISTORY_FILE, []);
-    history = Array.isArray(history) ? history : [];
-
-    history.unshift({
+    addHistoryEntry({
       time: new Date().toISOString(),
       input: validateText(entry.input, 300),
       severity: validateText(entry.severity, 40) || 'Unknown',
       summary: validateText(entry.summary, 300) || 'No summary'
     });
 
-    history = history.slice(0, 50);
-
-    await writeJsonFileAtomic(HISTORY_FILE, history);
-
-    return res.json({ saved: true, count: history.length });
+    return res.json({ saved: true, count: listHistoryEntries().length });
   } catch (error) {
     console.error('[HISTORY ERROR]', error);
     return res.status(500).json({
@@ -1920,22 +1867,17 @@ app.post('/api/history', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 app.get('/api/history', authenticateToken, requireAdmin, async (req, res) => {
-  const history = await readJsonFile(HISTORY_FILE, []);
-  return res.json(Array.isArray(history) ? history : []);
+  return res.json(listHistoryEntries());
 });
 
-const TICKETS_DIR = './data';
-const TICKETS_FILE = './data/tickets.json';
 const TICKET_STATUSES = ['New', 'In progress', 'Resolved'];
 
 async function readTickets() {
-  const tickets = await readJsonFile(TICKETS_FILE, []);
-  return Array.isArray(tickets) ? tickets : [];
+  return listTickets();
 }
 
 async function writeTickets(tickets) {
-  await fs.promises.mkdir(TICKETS_DIR, { recursive: true });
-  await writeJsonFileAtomic(TICKETS_FILE, tickets);
+  replaceTickets(tickets);
 }
 
 function canViewTicket(ticket, user) {
@@ -1945,10 +1887,7 @@ function canViewTicket(ticket, user) {
 }
 
 function getUnreadTicketCountFor(username) {
-  return readTickets().then((tickets) => tickets.filter((ticket) => (
-    (ticket.from === username || ticket.targetUser === username || username === ADMIN_USERNAME) &&
-    !(Array.isArray(ticket.readBy) && ticket.readBy.includes(username))
-  )).length);
+  return Promise.resolve(countUnreadTicketsFor(username, ADMIN_USERNAME));
 }
 
 function markTicketUnreadFor(ticket, username) {

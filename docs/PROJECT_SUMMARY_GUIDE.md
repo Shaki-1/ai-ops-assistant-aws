@@ -40,7 +40,7 @@ The Resource Dashboard shows live metrics and runtime health for admins. Metrics
 
 ### Alert Engine
 
-The backend includes a lightweight in-memory alert engine for CPU, RAM, disk, latency, failed requests, and AI analysis failures. Admins can acknowledge alerts and ask AI to explain active alerts.
+The backend includes a lightweight SQLite-backed alert engine for CPU, RAM, disk, latency, failed requests, and AI analysis failures. Admins can acknowledge alerts and ask AI to explain active alerts.
 
 ### Security Center
 
@@ -58,7 +58,7 @@ Users can submit tickets, feedback, and suggestions. Admins can view, reply, cha
 
 ### Incident Timeline
 
-The timeline records sanitized activity such as login success, AI analysis, ticket actions, alert actions, simulation analysis, metrics AI analysis, and security review activity. It is file-backed JSON for now.
+The timeline records sanitized activity such as login success, AI analysis, ticket actions, alert actions, simulation analysis, metrics AI analysis, and security review activity. It is stored in the local SQLite app database.
 
 ### AI Remediation Plans
 
@@ -83,7 +83,7 @@ The Governance page reminds users not to paste secrets, private keys, personal d
 - Certbot/Let's Encrypt
 - GitHub Actions
 - Groq/OpenAI-compatible API
-- JSON file storage
+- SQLite app-data storage
 
 ## Architecture
 
@@ -141,7 +141,7 @@ No offensive security tooling is included. Security Center is defensive and info
 
 ## Backup and Restore
 
-Tickets, timeline, and history are stored in JSON files. Scripts can export/import this data, but EC2-local backups do not survive `terraform destroy`. Archives must be copied off EC2 before destroy.
+Tickets, timeline, history, and alerts are stored in `backend/data/ai_ops.db`. Scripts can export/import this data, but EC2-local backups do not survive `terraform destroy`. Archives must be copied off EC2 before destroy.
 
 ## Lessons Learned
 
@@ -155,7 +155,7 @@ Tickets, timeline, and history are stored in JSON files. Scripts can export/impo
 
 ## Current Limitations
 
-- File-backed JSON is not a durable database.
+- The SQLite database is local to the EC2 instance unless exported or copied elsewhere.
 - Terraform destroy removes EC2-local data.
 - HTTPS depends on DNS propagation and Let's Encrypt rate limits.
 - Quick Checks are training samples unless a real collector is added.
@@ -163,7 +163,7 @@ Tickets, timeline, and history are stored in JSON files. Scripts can export/impo
 
 ## Future Improvements
 
-- SQLite or PostgreSQL persistence
+- Managed database or S3-backed backup automation
 - Real Linux collector agent
 - Multi-server inventory
 - PDF incident reports

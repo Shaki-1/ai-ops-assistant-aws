@@ -32,6 +32,9 @@ copy_if_exists() {
 
 copy_if_exists "$APP_DIR/backend/data/tickets.json" "$TMP_DIR/backend/data/tickets.json"
 copy_if_exists "$APP_DIR/backend/data/timeline.json" "$TMP_DIR/backend/data/timeline.json"
+copy_if_exists "$APP_DIR/backend/data/ai_ops.db" "$TMP_DIR/backend/data/ai_ops.db"
+copy_if_exists "$APP_DIR/backend/data/ai_ops.db-wal" "$TMP_DIR/backend/data/ai_ops.db-wal"
+copy_if_exists "$APP_DIR/backend/data/ai_ops.db-shm" "$TMP_DIR/backend/data/ai_ops.db-shm"
 copy_if_exists "$APP_DIR/backend/history.json" "$TMP_DIR/backend/history.json"
 
 if find "$TMP_DIR" -type f | grep -q .; then

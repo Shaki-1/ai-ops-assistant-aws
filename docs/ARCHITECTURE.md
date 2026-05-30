@@ -47,7 +47,7 @@ The backend is Node.js with Express. It provides:
 - AI troubleshooting and remediation endpoints
 - Ticket endpoints
 - Timeline endpoints
-- File-backed JSON persistence
+- SQLite persistence with legacy JSON migration
 - WebSocket server on `/ws`
 
 PM2 keeps the backend running as `ec2-user`.
@@ -103,10 +103,11 @@ It should not depend on local backup archives or print secrets.
 
 ## Data Storage
 
-The project currently uses file-backed JSON storage for:
+The project uses a local SQLite database at `backend/data/ai_ops.db` for:
 
 - Tickets
 - Timeline
 - History
+- Alerts
 
-This is intentionally lightweight. For long-term use, replace it with SQLite or PostgreSQL.
+Legacy JSON files are migrated on startup if present. For long-term production use, move the database to managed external storage or PostgreSQL.

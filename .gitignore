@@ -26,6 +26,8 @@ tfplan
 # Runtime data and local backups
 backend/history.json
 backend/data/*.json
+backend/data/*.db
+backend/data/*.db-*
 backups/
 
 # Large/local artifacts

@@ -61,7 +61,7 @@ The dashboard shows live CPU, RAM, disk, request health, latency, process memory
 
 ## Operational Alerts
 
-The backend evaluates lightweight in-memory alerts from live metrics. Alerts include severity, source, value, threshold, status, and timestamps. Admins can acknowledge alerts.
+The backend evaluates lightweight alerts from live metrics and persists them in SQLite. Alerts include severity, source, value, threshold, status, and timestamps. Admins can acknowledge alerts.
 
 ## AI Metrics Insight
 

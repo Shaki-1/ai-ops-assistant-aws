@@ -1,6 +1,6 @@
 # Backup and Restore
 
-AI Ops Assistant currently uses file-backed JSON storage for tickets, timeline, and history. This is simple and transparent, but it means data must be exported before destroying the EC2 instance.
+AI Ops Assistant stores app data in SQLite at `backend/data/ai_ops.db`. Legacy JSON files can still be imported for compatibility, but the SQLite database is the primary persistence file.
 
 ## Important Limitation
 
@@ -13,7 +13,8 @@ Backup/import scripts are intended to cover:
 - `backend/data/tickets.json`
 - `backend/data/timeline.json`
 - `backend/history.json`
-- other app JSON data added to the backup workflow
+- `backend/data/ai_ops.db`
+- SQLite WAL/SHM sidecar files when present
 
 They must not include:
 
@@ -54,7 +55,7 @@ Imports a selected archive on the target machine.
 
 ### `scripts/restore_app_data.sh`
 
-Restores the latest local EC2 backup if present. If no backup exists, it initializes empty/default data files so the backend can start safely.
+Restores the latest local EC2 backup if present. If no backup exists, it initializes empty/default JSON fallback files; the backend creates `backend/data/ai_ops.db` on startup and migrates existing JSON files when present.
 
 ### `scripts/push_restore_app_data.sh`
 
@@ -99,4 +100,4 @@ SSH_KEY="$HOME/.ssh/your-ssh-key" ./scripts/push_restore_app_data.sh backups/app
 
 ## Future Improvement
 
-Use S3, SQLite backups, PostgreSQL, or another external durable store for real persistence.
+Use S3, PostgreSQL, managed backups, or another external durable store for persistence beyond the local EC2 filesystem.
