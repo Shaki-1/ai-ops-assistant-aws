@@ -163,15 +163,29 @@ cd ai-ops-assistant-aws
 Create a local, untracked `terraform.tfvars` from environment variables:
 
 ```bash
+export TF_VAR_ec2_type="t3.micro"
+export TF_VAR_ec2_name="ai-ops-assistant"
+export TF_VAR_keypair="your-ec2-keypair-name"
+export TF_VAR_aws_owner="your-name"
 export TF_VAR_groq_api_key="your-private-groq-key"
+export TF_VAR_duckdns_domain="your-duckdns-subdomain"
 export TF_VAR_duckdns_token="your-private-duckdns-token"
+export TF_VAR_admin_username="admin"
 export TF_VAR_admin_password="your-private-admin-password"
+export TF_VAR_user_username="user"
 export TF_VAR_user_password="your-private-user-password"
 export TF_VAR_auth_token_secret="your-long-random-secret"
 ./scripts/create_tfvars_from_env.sh
 ```
 
 Use `terraform.tfvars.example` for placeholder structure only. Do not commit real secrets.
+Terraform automatically discovers the latest Amazon Linux 2023 AMI, the default VPC, default subnets, and creates the SSH/HTTP/HTTPS security group. Port 3000 stays private behind Nginx.
+
+To find your EC2 key pair name:
+
+```bash
+aws ec2 describe-key-pairs --query "KeyPairs[*].KeyName" --output table
+```
 
 ---
 

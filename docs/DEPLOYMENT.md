@@ -7,9 +7,6 @@ Do not commit `terraform.tfvars`. It contains private deployment values such as 
 Use `terraform.tfvars.example` as the placeholder template, then generate the real local file from environment variables:
 
 ```bash
-export TF_VAR_ami_id="ami-xxxxxxxxxxxxxxxxx"
-export TF_VAR_subnet_id="subnet-xxxxxxxxxxxxxxxxx"
-export TF_VAR_main_sg_id="sg-xxxxxxxxxxxxxxxxx"
 export TF_VAR_ec2_type="t3.micro"
 export TF_VAR_ec2_name="ai-ops-assistant"
 export TF_VAR_keypair="your-ec2-keypair-name"
@@ -27,6 +24,12 @@ export TF_VAR_auth_token_secret="your-long-random-secret"
 ```
 
 The script writes `terraform.tfvars` locally with restrictive permissions when supported. It does not print secret values.
+
+Terraform discovers the latest Amazon Linux 2023 AMI, the default VPC, default VPC subnets, and creates the web security group automatically. You only need to provide your existing EC2 key pair name. To list available key pairs:
+
+```bash
+aws ec2 describe-key-pairs --query "KeyPairs[*].KeyName" --output table
+```
 
 ## Apply
 

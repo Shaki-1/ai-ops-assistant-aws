@@ -3,9 +3,6 @@
 set -euo pipefail
 
 REQUIRED_VARS=(
-  TF_VAR_ami_id
-  TF_VAR_subnet_id
-  TF_VAR_main_sg_id
   TF_VAR_ec2_type
   TF_VAR_ec2_name
   TF_VAR_keypair
@@ -46,9 +43,6 @@ write_var() {
 
 umask 077
 {
-  write_var "ami_id"
-  write_var "subnet_id"
-  write_var "main_sg_id"
   write_var "ec2_type"
   write_var "ec2_name"
   write_var "keypair"
