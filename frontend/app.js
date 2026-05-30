@@ -1113,10 +1113,15 @@ Based on diagnostic telemetry scans:
 
 function parseMarkdownToHTML(markdown) {
   if (!markdown) return '';
-  
-  let html = markdown;
 
-  // HTML Character Safety Escapes (excluding code backticks)
+  const codeBlocks = [];
+  let html = markdown.replace(/```(?:bash)?\n([\s\S]*?)\n```/g, (match, code) => {
+    const index = codeBlocks.length;
+    codeBlocks.push(code);
+    return `@@AI_OPS_CODE_BLOCK_${index}@@`;
+  });
+
+  // HTML Character Safety Escapes for non-code markdown.
   html = html
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -1142,18 +1147,6 @@ function parseMarkdownToHTML(markdown) {
   // Bold tags
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   
-  // Code block parsing with copy controls
-  html = html.replace(/```(?:bash)?\n([\s\S]*?)\n```/g, (match, code) => {
-    const encodedCommand = encodeURIComponent(code);
-    return `<div class="command-copy-card markdown-command-block">
-      <div class="command-copy-header">
-        <span>bash</span>
-        <button type="button" class="btn-copy command-copy-btn" data-copy-command-encoded="${encodedCommand}">Copy</button>
-      </div>
-      <pre class="command-code-block"><code class="language-bash">${code}</code></pre>
-    </div>`;
-  });
-  
   // Bullet lists
   html = html.replace(/^\*\s+(.+)$/gm, '<li>$1</li>');
   html = html.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
@@ -1163,6 +1156,10 @@ function parseMarkdownToHTML(markdown) {
   
   // Horizontal rules
   html = html.replace(/^---$/gm, '<hr>');
+
+  codeBlocks.forEach((code, index) => {
+    html = html.replace(`@@AI_OPS_CODE_BLOCK_${index}@@`, renderMarkdownCommandGroupHtml(code));
+  });
   
   return html;
 }
@@ -1555,6 +1552,59 @@ function renderPlainList(element, items) {
   });
 }
 
+function encodeCommandForCopy(command) {
+  return encodeURIComponent(String(command || ''));
+}
+
+function renderMarkdownCommandGroupHtml(commandText) {
+  const command = String(commandText || '').trimEnd();
+  const encodedCommand = encodeCommandForCopy(command);
+  const commandLines = command
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const commandCards = (commandLines.length > 1 ? commandLines : [command])
+    .map((item, index) => {
+      const encodedItem = encodeCommandForCopy(item);
+      const label = commandLines.length > 1 ? `command ${index + 1}` : 'command block';
+      return `<div class="command-copy-card">
+        <div class="command-copy-header">
+          <span>${label}</span>
+          <button type="button" class="btn-copy command-copy-btn" data-copy-command-encoded="${encodedItem}">Copy</button>
+        </div>
+        <pre class="command-code-block"><code class="language-bash">${escapeHtml(item)}</code></pre>
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="command-group-card markdown-command-block">
+    <div class="command-group-header">
+      <span>bash commands</span>
+      <button type="button" class="btn-copy command-copy-btn" data-copy-command-group="${encodedCommand}">Copy all commands</button>
+    </div>
+    ${commandCards}
+  </div>`;
+}
+
+function createCommandGroupHeader(commands, label = 'Command group') {
+  const header = document.createElement('div');
+  header.className = 'command-group-header';
+
+  const title = document.createElement('span');
+  title.textContent = label;
+
+  const copyAllButton = document.createElement('button');
+  copyAllButton.type = 'button';
+  copyAllButton.className = 'btn-copy command-copy-btn';
+  copyAllButton.dataset.copyCommandGroup = commands.join('\n');
+  copyAllButton.textContent = 'Copy all commands';
+
+  header.appendChild(title);
+  header.appendChild(copyAllButton);
+
+  return header;
+}
+
 function createCommandBlock(command, label = 'Command') {
   const wrapper = document.createElement('div');
   wrapper.className = 'command-copy-card';
@@ -1592,13 +1642,25 @@ function renderCommandList(element, commands) {
     return;
   }
 
-  const values = Array.isArray(commands) && commands.length > 0 ? commands : ['No verification commands returned.'];
+  const values = Array.isArray(commands) ? commands.map(String).filter(Boolean) : [];
   element.innerHTML = '';
+
+  if (!values.length) {
+    const emptyItem = document.createElement('li');
+    emptyItem.textContent = 'No verification commands returned.';
+    element.appendChild(emptyItem);
+    return;
+  }
+
+  const groupItem = document.createElement('li');
+  groupItem.className = 'command-group-actions';
+  groupItem.appendChild(createCommandGroupHeader(values, 'Verification commands'));
+  element.appendChild(groupItem);
 
   values.forEach((command) => {
     const li = document.createElement('li');
     li.className = 'command-list-item';
-    li.appendChild(createCommandBlock(String(command), 'bash'));
+    li.appendChild(createCommandBlock(command, 'bash'));
     element.appendChild(li);
   });
 }
@@ -3556,6 +3618,17 @@ if (timelineList) {
   // 4. Recommended steps
   stepsList.innerHTML = "";
   if (data.recommendedSteps && data.recommendedSteps.length > 0) {
+    const safeCommands = data.recommendedSteps
+      .map(parseSafeCommandStep)
+      .filter(Boolean);
+
+    if (safeCommands.length > 0) {
+      const groupLi = document.createElement('li');
+      groupLi.className = 'command-group-actions';
+      groupLi.appendChild(createCommandGroupHeader(safeCommands, 'AI troubleshooting safe commands'));
+      stepsList.appendChild(groupLi);
+    }
+
     data.recommendedSteps.forEach(step => {
       const li = document.createElement('li');
       const safeCommand = parseSafeCommandStep(step);
@@ -3704,15 +3777,16 @@ copyCommandsBtn.addEventListener('click', () => {
 });
 
 document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-copy-command], [data-copy-command-encoded]');
+  const button = event.target.closest('[data-copy-command], [data-copy-command-encoded], [data-copy-command-group]');
 
   if (!button) {
     return;
   }
 
-  const command = button.dataset.copyCommandEncoded
+  const command = button.dataset.copyCommandGroup
+    || (button.dataset.copyCommandEncoded
     ? decodeURIComponent(button.dataset.copyCommandEncoded)
-    : (button.dataset.copyCommand || '');
+    : (button.dataset.copyCommand || ''));
 
   navigator.clipboard.writeText(command).then(() => {
     const originalText = button.textContent;
