@@ -44,7 +44,20 @@ You analyze logs, command outputs, and AI Ops Assistant quick-check diagnostic s
 Quick-check samples are simulated/training diagnostic evidence bundles. They may include labels such as
 "Diagnostic source", "Expected context", "Quick check status", "Evidence", and "Safe next checks".
 Use those labels as context. Do NOT call a quick-check sample an "unknown command" unless the actual
-output explicitly says "command not found", "unknown command", "invalid option", or equivalent.
+output explicitly says "command not found", "unknown command", "unknown option", "invalid command",
+"invalid option", "not recognized as an internal or external command", or equivalent.
+
+The backend may prepend "Input classification metadata" with inputType values such as:
+- quick_check
+- simulation
+- command_output
+- logs
+- unknown_command_error
+- mixed
+
+Use that metadata to interpret the input. First ask: "Is this an actual unknown command error, or is
+this diagnostic output from a known tool?" If it is diagnostic output from a known tool, analyze the
+observed output and evidence instead of judging the command text itself.
 
 Your job is to classify the operational state correctly:
 - Healthy: service/resource looks normal, reachable, running, or below warning threshold.
@@ -80,7 +93,7 @@ JSON Schema:
   },
   {
     "title": "Diagnosis",
-    "description": "The AI classified the result as healthy, unknown command, or error.",
+    "description": "The AI classified the result as healthy, warning, invalid command, or error.",
     "status": "success" | "warning" | "danger" | "info"
   },
   {
@@ -106,7 +119,7 @@ Classification rules:
   severity = "Medium"
   summary must say warning/degraded/risk detected and identify the evidence.
 
-- If the input shows command not found, unknown command, invalid option, not recognized, no such file or directory, or missing package/tool:
+- If the input shows command not found, unknown command, unknown option, invalid command, invalid option, or not recognized as an internal or external command:
   severity = "Medium"
   summary must say invalid or unavailable command/tool.
 

@@ -48,6 +48,7 @@ const OPERATIONS_COLLAPSED_KEY = 'aiOpsOperationsPanelCollapsed';
 const GOVERNANCE_VERSION = 'governance-v1';
 const DEFAULT_VIEW = 'analyzer';
 const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance', 'timeline']);
+const INPUT_COLLAPSE_BREAKPOINT = 1180;
 
 if (localStorage.getItem('authToken')) {
   loginScreen.classList.add('hidden');
@@ -305,6 +306,42 @@ Quick check status: warning
 Evidence: no active Nginx outage; one recovered AI latency warning should be monitored.
 Safe next checks: pm2 logs ai-ops-backend --lines 100 --nostream, curl -fsS http://127.0.0.1:3000/api/status`
 };
+
+const QUICK_CHECK_LABELS = {
+  nginx: 'Nginx service health',
+  backend: 'Backend API health',
+  disk: 'Disk capacity',
+  memory: 'Memory usage',
+  ssh: 'SSH service health',
+  'cpu-load': 'CPU load',
+  'api-latency': 'API latency',
+  'https-cert': 'HTTPS certificate',
+  'dns-duckdns': 'DNS / DuckDNS',
+  'auth-logs': 'Authentication logs',
+  'failed-requests': 'Failed API requests',
+  'pm2-process': 'PM2 process health',
+  'system-updates': 'System updates',
+  firewall: 'Firewall / security group',
+  'node-runtime': 'Node.js runtime',
+  'storage-permissions': 'Storage permissions',
+  'recent-errors': 'Recent service errors'
+};
+
+function buildQuickCheckInput(type) {
+  const sample = QUICK_CHECK_INPUTS[type];
+
+  if (!sample) {
+    return '';
+  }
+
+  return [
+    'Input type: quick_check diagnostic output',
+    `Diagnostic type: ${QUICK_CHECK_LABELS[type] || type}`,
+    'Expected interpretation: analyze the observed output from known tools; do not treat the command text itself as an unknown command unless the output explicitly says command not found, unknown option, invalid command, or not recognized.',
+    '',
+    sample
+  ].join('\n');
+}
 
 const SIMULATION_SCENARIOS = [
   {
@@ -663,6 +700,7 @@ const summaryBackendStatus = document.getElementById('summary-backend-status');
 const logInput = document.getElementById('log-input');
 const clearInputBtn = document.getElementById('clear-input-btn');
 const analyzeBtn = document.getElementById('analyze-btn');
+const inputToggleBtn = document.getElementById('input-toggle-btn');
 
 const analysisEmptyState = document.getElementById('analysis-empty-state');
 const analysisLoadingState = document.getElementById('analysis-loading-state');
@@ -785,9 +823,10 @@ function getMockAnalysis(logText = '') {
   if (
     text.includes('command not found') ||
     text.includes('unknown command') ||
+    text.includes('unknown option') ||
+    text.includes('invalid command') ||
     text.includes('not recognized') ||
-    text.includes('invalid option') ||
-    text.includes('no such file or directory')
+    text.includes('invalid option')
   ) {
     return {
       summary: "Invalid or unknown command.",
@@ -2716,7 +2755,7 @@ function setOperationsPanelCollapsed(isCollapsed) {
   operationsToggleBtn?.setAttribute('aria-expanded', String(!collapsed));
 
   if (operationsToggleBtn) {
-    operationsToggleBtn.textContent = collapsed ? 'Expand tools' : 'Collapse tools';
+    operationsToggleBtn.textContent = collapsed ? 'Show side panel' : 'Hide side panel';
   }
 
   localStorage.setItem(OPERATIONS_COLLAPSED_KEY, String(collapsed));
@@ -2724,6 +2763,49 @@ function setOperationsPanelCollapsed(isCollapsed) {
 
 function initializeOperationsPanelState() {
   setOperationsPanelCollapsed(localStorage.getItem(OPERATIONS_COLLAPSED_KEY) === 'true');
+}
+
+function isCompactAnalyzerLayout() {
+  return window.matchMedia(`(max-width: ${INPUT_COLLAPSE_BREAKPOINT}px)`).matches;
+}
+
+function setInputPanelCollapsed(isCollapsed) {
+  const collapsed = Boolean(isCollapsed) && !isCompactAnalyzerLayout();
+  document.body.classList.toggle('input-collapsed', collapsed);
+  document.querySelector('.left-column')?.classList.toggle('is-input-collapsed', collapsed);
+  inputToggleBtn?.setAttribute('aria-expanded', String(!collapsed));
+
+  if (inputToggleBtn) {
+    inputToggleBtn.textContent = collapsed ? 'Show input' : 'Hide input';
+  }
+}
+
+function collapseInputPanelAfterAnalysisStart() {
+  if (!isCompactAnalyzerLayout()) {
+    setInputPanelCollapsed(true);
+  }
+}
+
+function expandInputPanel() {
+  setInputPanelCollapsed(false);
+}
+
+function focusResultPanelAfterAnalysisStart(force = false) {
+  const resultPanel = document.querySelector('.panel-result');
+
+  if (!resultPanel) {
+    return;
+  }
+
+  resultPanel.setAttribute('tabindex', '-1');
+
+  if (force || isCompactAnalyzerLayout()) {
+    resultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  requestAnimationFrame(() => {
+    resultPanel.focus({ preventScroll: true });
+  });
 }
 
 function setHistoryVisible(isVisible) {
@@ -2750,6 +2832,7 @@ function resetAnalysisResultPanel() {
   currentActiveLog = '';
   selectedSimulationScenario = null;
   updateSimulationContextBanner(null);
+  expandInputPanel();
 
   analysisLoadingState?.classList.add('hidden');
   analysisResultsPanel?.classList.add('hidden');
@@ -2997,6 +3080,14 @@ themeToggleBtn?.addEventListener('click', toggleTheme);
 operationsToggleBtn?.addEventListener('click', () => {
   setOperationsPanelCollapsed(!document.body.classList.contains('operations-collapsed'));
 });
+inputToggleBtn?.addEventListener('click', () => {
+  setInputPanelCollapsed(!document.body.classList.contains('input-collapsed'));
+});
+window.addEventListener('resize', () => {
+  if (isCompactAnalyzerLayout()) {
+    setInputPanelCollapsed(false);
+  }
+});
 aiMetricsBtn?.addEventListener('click', analyzeMetricsWithAI);
 aiAlertsBtn?.addEventListener('click', analyzeAlertsWithAI);
 toggleAlertsPanelBtn?.addEventListener('click', () => toggleCollapsiblePanel(alertsPanelBody, toggleAlertsPanelBtn));
@@ -3087,6 +3178,7 @@ renderSimulationScenarios();
 
 // Clear textarea logic
 clearInputBtn.addEventListener('click', () => {
+  expandInputPanel();
   logInput.value = "";
   logInput.focus();
 });
@@ -3121,6 +3213,8 @@ async function analyzeCurrentInput() {
   commandsPanel.classList.add('hidden');
   reportPanel.classList.add('hidden');
   showAnalyzerView();
+  collapseInputPanelAfterAnalysisStart();
+  focusResultPanelAfterAnalysisStart();
 
   if (isOfflineMode) {
     // Zero-downtime Local Simulation Fallback
@@ -3206,7 +3300,7 @@ if (sev === "low") {
   badgeClass += " badge-low";
 } 
 else if (sev === "medium") {
-  badgeText = "⚠️ Warning — Unknown command or needs checking";
+  badgeText = "⚠️ Warning — Needs checking";
   badgeClass += " badge-medium";
 } 
 else if (sev === "high") {
@@ -3586,7 +3680,7 @@ downloadReportBtn.addEventListener('click', () => {
 });
 
 async function runQuickCheck(type) {
-  const quickCheckInput = QUICK_CHECK_INPUTS[type];
+  const quickCheckInput = buildQuickCheckInput(type);
 
   if (!quickCheckInput) {
     return;
@@ -3597,9 +3691,6 @@ async function runQuickCheck(type) {
   analyzeBtn.disabled = true;
 
   try {
-    if (window.matchMedia('(max-width: 1180px)').matches) {
-      document.querySelector('.panel-result')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
     await analyzeCurrentInput();
   } finally {
     analyzeBtn.disabled = false;

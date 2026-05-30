@@ -9,6 +9,7 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --result-column-width: minmax(420px, 560px);
+  --input-collapsed-width: 56px;
   --tools-column-width: 320px;
   --tools-collapsed-width: 48px;
 
@@ -363,6 +364,15 @@ body.operations-collapsed .dashboard-grid {
   gap: 1.5rem;
 }
 
+body.input-collapsed .dashboard-grid {
+  grid-template-columns: var(--input-collapsed-width) minmax(460px, 1fr) var(--tools-column-width);
+  gap: 1.5rem;
+}
+
+body.input-collapsed.operations-collapsed .dashboard-grid {
+  grid-template-columns: var(--input-collapsed-width) minmax(520px, 1fr) var(--tools-collapsed-width);
+}
+
 .simulation-context-banner {
   grid-column: 1 / -1;
   display: flex;
@@ -561,6 +571,42 @@ body.operations-collapsed .dashboard-grid {
   min-height: 38px;
   white-space: normal;
   padding-inline: 0.7rem;
+}
+
+.input-toggle {
+  margin-left: auto;
+}
+
+.left-column.is-input-collapsed {
+  width: var(--input-collapsed-width);
+  overflow: hidden;
+}
+
+.left-column.is-input-collapsed .panel-analyzer {
+  min-height: 220px;
+}
+
+.left-column.is-input-collapsed .panel-analyzer .panel-header {
+  min-height: 220px;
+  padding: 0.65rem 0.35rem;
+  justify-content: flex-start;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  border-bottom: 0;
+}
+
+.left-column.is-input-collapsed .panel-analyzer .panel-icon,
+.left-column.is-input-collapsed .panel-analyzer h2,
+.left-column.is-input-collapsed .analyzer-body {
+  display: none;
+}
+
+.left-column.is-input-collapsed .input-toggle {
+  writing-mode: vertical-rl;
+  width: var(--input-collapsed-width);
+  min-height: 180px;
+  padding: 0.75rem 0.35rem;
+  margin-left: 0;
 }
 
 .right-column.is-collapsed {
@@ -2478,6 +2524,23 @@ button {
 }
 
 /* --- Responsive Adjustments --- */
+@media (min-width: 1181px) and (max-width: 1380px) {
+  :root {
+    --result-column-width: minmax(380px, 500px);
+    --tools-column-width: 280px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: minmax(360px, 1fr) var(--result-column-width) var(--tools-column-width);
+    padding: 1.5rem;
+    gap: 1.5rem;
+  }
+
+  body.operations-collapsed .dashboard-grid {
+    grid-template-columns: minmax(520px, 1fr) var(--result-column-width) var(--tools-collapsed-width);
+  }
+}
+
 @media (max-width: 1180px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -2485,8 +2548,45 @@ button {
     gap: 1.5rem;
   }
 
-  body.operations-collapsed .dashboard-grid {
+  body.operations-collapsed .dashboard-grid,
+  body.input-collapsed .dashboard-grid,
+  body.input-collapsed.operations-collapsed .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .left-column.is-input-collapsed {
+    width: 100%;
+    overflow: visible;
+  }
+
+  .left-column.is-input-collapsed .panel-analyzer,
+  .left-column.is-input-collapsed .panel-analyzer .panel-header {
+    min-height: 0;
+  }
+
+  .left-column.is-input-collapsed .panel-analyzer .panel-header {
+    padding: 1rem 1.5rem;
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .left-column.is-input-collapsed .panel-analyzer .panel-icon,
+  .left-column.is-input-collapsed .panel-analyzer h2,
+  .left-column.is-input-collapsed .analyzer-body {
+    display: flex;
+  }
+
+  .left-column.is-input-collapsed .panel-analyzer h2 {
+    display: block;
+  }
+
+  .left-column.is-input-collapsed .input-toggle {
+    writing-mode: horizontal-tb;
+    width: auto;
+    min-height: 38px;
+    padding: 0.45rem 0.9rem;
+    margin-left: auto;
   }
 
   .right-column.is-collapsed .operations-toggle {

@@ -91,6 +91,7 @@
             <polyline points="10 9 9 9 8 9"/>
           </svg>
           <h2 id="analyzer-title">Log Analyzer Input</h2>
+          <button id="input-toggle-btn" class="btn-secondary panel-header-action input-toggle" type="button" aria-expanded="true">Hide input</button>
         </div>
 
         <div class="analyzer-body">
@@ -146,7 +147,7 @@
               <button class="btn-secondary" onclick="runQuickCheck('pm2-process')">PM2</button>
               <button class="btn-secondary" onclick="runQuickCheck('system-updates')">Updates</button>
               <button class="btn-secondary" onclick="runQuickCheck('node-runtime')">Node.js</button>
-              <button class="btn-secondary" onclick="runQuickCheck('recent-errors')">Check Recent Errors</button>
+              <button class="btn-secondary" onclick="runQuickCheck('recent-errors')">Recent Errors</button>
             </div>
           </div>
 
@@ -417,7 +418,7 @@
 
     <!-- RIGHT PANEL: Server Health and Dashboard Navigation -->
     <div class="panel-column right-column" id="operations-panel">
-      <button id="operations-toggle-btn" class="btn-secondary operations-toggle" type="button" aria-expanded="true">Collapse tools</button>
+      <button id="operations-toggle-btn" class="btn-secondary operations-toggle" type="button" aria-expanded="true">Hide side panel</button>
 
       <!-- Section 2: Server Health Monitor -->
       <section class="dashboard-panel panel-health" aria-labelledby="health-title">

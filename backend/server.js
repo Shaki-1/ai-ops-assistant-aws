@@ -394,6 +394,79 @@ function normalizeAnalysisResult(result) {
   return normalized;
 }
 
+function classifyDiagnosticInput(logText = '') {
+  const text = String(logText);
+  const lower = text.toLowerCase();
+  const hasUnknownCommandEvidence =
+    lower.includes('command not found') ||
+    lower.includes('unknown command') ||
+    lower.includes('not recognized as an internal or external command') ||
+    lower.includes('unknown option') ||
+    lower.includes('invalid command') ||
+    lower.includes('invalid option');
+
+  if (hasUnknownCommandEvidence) {
+    return {
+      inputType: 'unknown_command_error',
+      expectedInterpretation: 'Treat as a malformed or unavailable command only if the provided output proves the command failed.'
+    };
+  }
+
+  if (
+    lower.includes('input type: quick_check') ||
+    lower.includes('diagnostic source:') ||
+    lower.includes('quick check status:')
+  ) {
+    return {
+      inputType: 'quick_check',
+      expectedInterpretation: 'This is a diagnostic output sample from a known tool. Analyze the observed status, evidence, and output; do not call it an unknown command.'
+    };
+  }
+
+  if (lower.includes('simulated incident') || lower.includes('simulation scenario') || lower.includes('simulated server state')) {
+    return {
+      inputType: 'simulation',
+      expectedInterpretation: 'This is simulated training evidence. Diagnose it as a scenario while making clear that no real server state is changed.'
+    };
+  }
+
+  if (
+    lower.includes('command observed:') ||
+    lower.includes('output:') ||
+    /\b(systemctl|journalctl|df -h|free -h|pm2|curl|nginx -t|node -v|npm -v)\b/i.test(text)
+  ) {
+    return {
+      inputType: 'command_output',
+      expectedInterpretation: 'This appears to be command output from a known administrative tool. Analyze the output content and status.'
+    };
+  }
+
+  if (/\b(error|warn|failed|accepted|denied|timeout|exception|traceback|journal|syslog|nginx|apache|sshd)\b/i.test(text)) {
+    return {
+      inputType: 'logs',
+      expectedInterpretation: 'This appears to be log text. Analyze events, severity, evidence, and likely operational cause.'
+    };
+  }
+
+  return {
+    inputType: 'mixed',
+    expectedInterpretation: 'This input may contain mixed notes, logs, and command output. Classify conservatively from explicit evidence only.'
+  };
+}
+
+function buildAnalysisPromptInput(logText) {
+  const classification = classifyDiagnosticInput(logText);
+
+  return [
+    'Input classification metadata:',
+    `inputType: ${classification.inputType}`,
+    `expectedInterpretation: ${classification.expectedInterpretation}`,
+    '',
+    'Raw diagnostic input:',
+    logText
+  ].join('\n');
+}
+
 // ==========================================
 // SYSTEM STATS HELPER
 // ==========================================
@@ -1538,7 +1611,7 @@ app.post('/api/analyze-log', authenticateToken, aiRateLimit, async (req, res) =>
     console.log('[DEMO] Generating mock log analysis...');
     await new Promise(resolve => setTimeout(resolve, 800));
     const rawMock = getMockAnalysis(logText);
-    const sanitizedMock = sanitizeObject(rawMock);
+    const sanitizedMock = normalizeAnalysisResult(sanitizeObject(rawMock));
     apiRuntimeMetrics.successfulAIAnalyses += 1;
     queueTimelineEvent({
       type: 'ai_analysis_run',
@@ -1552,7 +1625,7 @@ app.post('/api/analyze-log', authenticateToken, aiRateLimit, async (req, res) =>
   }
 
   try {
-const aiText = await generateAIResponse(logText, LOG_ANALYZER_PROMPT, true);
+    const aiText = await generateAIResponse(buildAnalysisPromptInput(logText), LOG_ANALYZER_PROMPT, true);
 
     // Clean up potential markdown formatting block wrapper from LLM
     let cleanJsonString = aiText;
