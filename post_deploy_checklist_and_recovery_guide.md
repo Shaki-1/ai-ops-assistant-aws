@@ -80,13 +80,13 @@ echo $MY_IP
 Connect to EC2:
 
 ```bash
-ssh -i "$HOME/.ssh/id_rsa_level3" ec2-user@$MY_IP
+ssh -i "$HOME/.ssh/ai-ops-laura-new.pem" ec2-user@$MY_IP
 ```
 
 Alternative using DNS:
 
 ```bash
-ssh -i "$HOME/.ssh/id_rsa_level3" ec2-user@$MY_EC2
+ssh -i "$HOME/.ssh/ai-ops-laura-new.pem" ec2-user@$MY_EC2
 ```
 
 ---
@@ -348,4 +348,3 @@ The infrastructure currently supports:
 - Automated DuckDNS updates
 - PM2 auto-start after reboot
 - Reproducible Terraform deployment
-

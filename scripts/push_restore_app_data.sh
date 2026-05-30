@@ -8,7 +8,7 @@ if [ "${1:-}" = "" ]; then
 fi
 
 ARCHIVE="$1"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_rsa_level3}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/ai-ops-laura-new.pem}"
 SSH_USER="${SSH_USER:-ec2-user}"
 
 if [ ! -f "$ARCHIVE" ]; then

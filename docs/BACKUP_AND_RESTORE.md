@@ -12,6 +12,7 @@ Backup/import scripts are intended to cover:
 
 - `backend/data/tickets.json`
 - `backend/data/timeline.json`
+- `backend/data/audit_logs.json`
 - `backend/history.json`
 - `backend/data/ai_ops.db`
 - SQLite WAL/SHM sidecar files when present

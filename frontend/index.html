@@ -472,6 +472,7 @@
         <button id="security-center-btn" class="btn-secondary header-nav-btn">Security Center</button>
         <button id="inbox-view-btn" class="btn-secondary header-nav-btn">Admin Inbox</button>
         <button id="timeline-view-btn" class="btn-secondary header-nav-btn">Incident Timeline</button>
+        <button id="audit-logs-view-btn" class="btn-secondary header-nav-btn">Audit Logs</button>
       </div>
     </div>
 
@@ -950,6 +951,37 @@
         </div>
         <div class="timeline-feed" id="incident-timeline-list">
           <p class="feedback-status">No timeline events yet.</p>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="dashboard-view audit-logs-view hidden" id="audit-logs-view" aria-labelledby="audit-logs-title">
+    <div class="dashboard-view-inner">
+      <div class="dashboard-view-header">
+        <div>
+          <p class="view-eyebrow">Defensive Accountability</p>
+          <h2 id="audit-logs-title">Audit Logs</h2>
+          <p>Review important auth, ticket, AI, alert, security, and simulation actions without storing secrets or full logs.</p>
+        </div>
+        <button id="audit-logs-back-btn" class="btn-secondary">Back to Analyzer</button>
+      </div>
+
+      <section class="dashboard-panel timeline-panel audit-panel">
+        <div class="panel-header timeline-toolbar">
+          <div class="timeline-filters" id="audit-log-filters">
+            <button class="btn-secondary active-filter" data-audit-filter="All">All</button>
+            <button class="btn-secondary" data-audit-filter="Auth">Auth</button>
+            <button class="btn-secondary" data-audit-filter="Tickets">Tickets</button>
+            <button class="btn-secondary" data-audit-filter="AI">AI</button>
+            <button class="btn-secondary" data-audit-filter="Alerts">Alerts</button>
+            <button class="btn-secondary" data-audit-filter="Security">Security</button>
+            <button class="btn-secondary" data-audit-filter="Simulation">Simulation</button>
+          </div>
+          <button id="refresh-audit-logs-btn" class="btn-secondary">Refresh</button>
+        </div>
+        <div class="timeline-feed audit-log-feed" id="audit-log-list">
+          <p class="feedback-status">No audit logs yet.</p>
         </div>
       </section>
     </div>

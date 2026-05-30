@@ -10,6 +10,7 @@ const DB_PATH = path.join(DATA_DIR, 'ai_ops.db');
 const TICKETS_JSON = path.join(DATA_DIR, 'tickets.json');
 const TIMELINE_JSON = path.join(DATA_DIR, 'timeline.json');
 const HISTORY_JSON = path.join(__dirname, 'history.json');
+const AUDIT_LOGS_JSON = path.join(DATA_DIR, 'audit_logs.json');
 
 let db;
 
@@ -123,6 +124,9 @@ function createSchema() {
       actor TEXT NOT NULL,
       role TEXT NOT NULL,
       action TEXT NOT NULL,
+      resource_type TEXT NOT NULL DEFAULT 'general',
+      resource_id TEXT,
+      result TEXT NOT NULL DEFAULT 'success',
       description TEXT,
       metadata TEXT NOT NULL DEFAULT '{}'
     );
@@ -133,7 +137,22 @@ function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_timeline_timestamp ON timeline_events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
     CREATE INDEX IF NOT EXISTS idx_alerts_type_status ON alerts(type, status);
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);
   `);
+
+  ensureColumn('audit_logs', 'resource_type', "TEXT NOT NULL DEFAULT 'general'");
+  ensureColumn('audit_logs', 'resource_id', 'TEXT');
+  ensureColumn('audit_logs', 'result', "TEXT NOT NULL DEFAULT 'success'");
+}
+
+function ensureColumn(tableName, columnName, definition) {
+  const database = ensureDb();
+  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all();
+
+  if (!columns.some((column) => column.name === columnName)) {
+    database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  }
 }
 
 function normalizeTicket(ticket) {
@@ -490,3 +509,113 @@ export function clearAcknowledgedAlertValue(type) {
   ensureDb().prepare('DELETE FROM acknowledged_alerts WHERE type = ?').run(type);
 }
 
+function appendAuditLogFallback(entry) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const logs = readJsonFileIfPresent(AUDIT_LOGS_JSON, []);
+  const nextLogs = Array.isArray(logs) ? logs : [];
+  nextLogs.unshift(entry);
+  fs.writeFileSync(AUDIT_LOGS_JSON, JSON.stringify(nextLogs.slice(0, 1000), null, 2), 'utf8');
+}
+
+export function addAuditLog(entry) {
+  const auditEntry = {
+    timestamp: String(entry.timestamp || new Date().toISOString()),
+    actor: String(entry.actor || 'unknown').slice(0, 80),
+    role: String(entry.role || 'unknown').slice(0, 40),
+    action: String(entry.action || 'unknown').slice(0, 80),
+    resourceType: String(entry.resourceType || 'general').slice(0, 80),
+    resourceId: entry.resourceId ? String(entry.resourceId).slice(0, 120) : null,
+    result: String(entry.result || 'success').slice(0, 40),
+    description: entry.description ? String(entry.description).slice(0, 500) : '',
+    metadata: entry.metadata || {}
+  };
+
+  try {
+    const result = ensureDb().prepare(`
+      INSERT INTO audit_logs (
+        timestamp, actor, role, action, resource_type, resource_id, result, description, metadata
+      ) VALUES (
+        @timestamp, @actor, @role, @action, @resourceType, @resourceId, @result, @description, @metadata
+      )
+    `).run({
+      ...auditEntry,
+      metadata: stringifyJson(auditEntry.metadata)
+    });
+
+    return { ...auditEntry, id: String(result.lastInsertRowid) };
+  } catch (error) {
+    const fallbackEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      ...auditEntry
+    };
+    appendAuditLogFallback(fallbackEntry);
+    return fallbackEntry;
+  }
+}
+
+export function listAuditLogs({ limit = 300, category = 'All' } = {}) {
+  const actionFilters = {
+    Auth: ['login_success', 'login_failure', 'logout', 'authorization_denied'],
+    Tickets: ['ticket_created', 'ticket_replied', 'ticket_status_changed', 'ticket_marked_read', 'ticket_deleted'],
+    AI: ['ai_analysis_run', 'remediation_plan_generated', 'ai_metrics_analysis', 'ai_alerts_analysis', 'ai_security_review', 'safe_commands_generated', 'incident_report_generated'],
+    Alerts: ['alert_triggered', 'alert_resolved', 'alert_acknowledged'],
+    Security: ['ai_security_review', 'authorization_denied'],
+    Simulation: ['simulation_scenario_analyzed']
+  };
+  const selectedActions = actionFilters[category] || null;
+
+  try {
+    let rows;
+
+    if (selectedActions) {
+      const placeholders = selectedActions.map(() => '?').join(', ');
+      rows = ensureDb().prepare(`
+        SELECT
+          id,
+          timestamp,
+          actor,
+          role,
+          action,
+          resource_type AS resourceType,
+          resource_id AS resourceId,
+          result,
+          description,
+          metadata
+        FROM audit_logs
+        WHERE action IN (${placeholders})
+        ORDER BY datetime(timestamp) DESC, id DESC
+        LIMIT ?
+      `).all(...selectedActions, limit);
+    } else {
+      rows = ensureDb().prepare(`
+        SELECT
+          id,
+          timestamp,
+          actor,
+          role,
+          action,
+          resource_type AS resourceType,
+          resource_id AS resourceId,
+          result,
+          description,
+          metadata
+        FROM audit_logs
+        ORDER BY datetime(timestamp) DESC, id DESC
+        LIMIT ?
+      `).all(limit);
+    }
+
+    return rows.map((row) => ({
+      ...Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null && value !== undefined)),
+      id: String(row.id),
+      metadata: safeJsonParse(row.metadata, {})
+    }));
+  } catch {
+    const logs = readJsonFileIfPresent(AUDIT_LOGS_JSON, []);
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const filteredLogs = selectedActions
+      ? safeLogs.filter((entry) => selectedActions.includes(entry.action))
+      : safeLogs;
+    return filteredLogs.slice(0, limit);
+  }
+}

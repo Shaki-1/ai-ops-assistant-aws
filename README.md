@@ -129,7 +129,7 @@ Create a local, untracked `terraform.tfvars` from environment variables:
 ```bash
 export TF_VAR_ec2_type="t3.micro"
 export TF_VAR_ec2_name="ai-ops-assistant"
-export TF_VAR_keypair="your-ec2-keypair-name"
+export TF_VAR_keypair="ai-ops-laura-new"
 export TF_VAR_aws_owner="your-name"
 export TF_VAR_groq_api_key="your-groq-api-key"
 export TF_VAR_duckdns_domain="your-domain"

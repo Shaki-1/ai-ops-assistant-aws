@@ -9,7 +9,7 @@ set -e
 echo "=== AI Ops Assistant EC2 Recovery Helper ==="
 
 PROJECT_DIR="/mnt/c/Users/User/Documents/APL-Instruktioner/Instruction/Groupwork/AI-applikation/ai-ops-assistant"
-MY_SSH="$HOME/.ssh/id_rsa_level3"
+MY_SSH="${SSH_KEY:-$HOME/.ssh/ai-ops-laura-new.pem}"
 
 if [ -d "$PROJECT_DIR" ]; then
   cd "$PROJECT_DIR"

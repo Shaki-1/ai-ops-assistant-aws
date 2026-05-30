@@ -36,7 +36,7 @@ Run these commands from your local WSL terminal inside the Terraform project fol
 ```bash
 cd "/mnt/c/Users/User/Documents/APL-Instruktioner/Instruction/Groupwork/AI-applikation/ai-ops-assistant"
 
-MY_SSH="$HOME/.ssh/id_rsa_level3"
+MY_SSH="$HOME/.ssh/ai-ops-laura-new.pem"
 MY_INSTANCE_ID=$(terraform state show aws_instance.ai_ops_assistant | grep '^id' | awk '{print $3}' | tr -d '"')
 MY_EC2=$(aws ec2 describe-instances   --instance-ids "$MY_INSTANCE_ID"   --query "Reservations[].Instances[].PublicDnsName"   --output text)
 

@@ -18,6 +18,7 @@ import {
   REPORT_GENERATOR_PROMPT
 } from './prompts/systemPrompt.js';
 import {
+  addAuditLog,
   addHistoryEntry,
   addTimelineEvent,
   clearAcknowledgedAlertValue,
@@ -28,6 +29,7 @@ import {
   getAcknowledgedAlertValue,
   initializeStorage,
   listAlerts,
+  listAuditLogs,
   listHistoryEntries,
   listTickets,
   listTimelineEvents,
@@ -327,6 +329,73 @@ function sanitizeObject(obj) {
   return obj;
 }
 
+function sanitizeAuditMetadata(value, depth = 0) {
+  const sensitivePattern = /(password|passwd|token|secret|api[_-]?key|private[_-]?key|authorization|cookie|jwt|credential)/i;
+
+  if (depth > 3) {
+    return '[truncated]';
+  }
+
+  if (typeof value === 'string') {
+    return value.slice(0, 240);
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((item) => sanitizeAuditMetadata(item, depth + 1));
+  }
+
+  if (value && typeof value === 'object') {
+    const safe = {};
+    Object.entries(value).slice(0, 20).forEach(([key, item]) => {
+      if (sensitivePattern.test(key)) {
+        safe[key] = '[redacted]';
+        return;
+      }
+
+      safe[key] = sanitizeAuditMetadata(item, depth + 1);
+    });
+    return safe;
+  }
+
+  return undefined;
+}
+
+function auditLog({
+  req = null,
+  actor = null,
+  role = null,
+  action,
+  resourceType = 'general',
+  resourceId = null,
+  result = 'success',
+  description = '',
+  metadata = {}
+}) {
+  try {
+    addAuditLog({
+      timestamp: new Date().toISOString(),
+      actor: actor || req?.user?.username || 'anonymous',
+      role: role || req?.user?.role || 'anonymous',
+      action,
+      resourceType,
+      resourceId,
+      result,
+      description,
+      metadata: sanitizeAuditMetadata({
+        ...metadata,
+        method: req?.method,
+        path: req?.path
+      })
+    });
+  } catch (error) {
+    console.warn('[AUDIT] Could not write audit log:', error.message);
+  }
+}
+
 function normalizeAnalysisResult(result) {
   const normalized = result && typeof result === 'object' ? { ...result } : {};
   const evidence = Array.isArray(normalized.evidenceFound) ? normalized.evidenceFound : [];
@@ -604,6 +673,20 @@ function resolveActiveAlert(type, resolvedAt = new Date().toISOString()) {
       threshold: alert.threshold
     }
   });
+  auditLog({
+    actor: 'system',
+    role: 'system',
+    action: 'alert_resolved',
+    resourceType: 'alert',
+    resourceId: alert.id,
+    result: 'success',
+    description: `Alert resolved: ${alert.title}.`,
+    metadata: {
+      alertType: alert.type,
+      value: alert.value,
+      threshold: alert.threshold
+    }
+  });
 }
 
 function upsertOperationalAlert(definition) {
@@ -653,6 +736,22 @@ function upsertOperationalAlert(definition) {
       source: definition.source,
       value: definition.value,
       threshold: definition.threshold
+    }
+  });
+  auditLog({
+    actor: 'system',
+    role: 'system',
+    action: 'alert_triggered',
+    resourceType: 'alert',
+    resourceId: definition.type,
+    result: 'success',
+    description: `Alert triggered: ${definition.title}.`,
+    metadata: {
+      alertType: definition.type,
+      source: definition.source,
+      value: definition.value,
+      threshold: definition.threshold,
+      severity: definition.severity
     }
   });
 
@@ -1080,6 +1179,13 @@ function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    auditLog({
+      req,
+      action: 'authentication_missing',
+      resourceType: 'auth',
+      result: 'failure',
+      description: 'Protected endpoint request had no bearer token.'
+    });
     return res.status(401).json({
       error: 'Authentication token missing.'
     });
@@ -1094,6 +1200,13 @@ function authenticateToken(req, res, next) {
 
     next();
   } catch (error) {
+    auditLog({
+      req,
+      action: 'authentication_invalid',
+      resourceType: 'auth',
+      result: 'failure',
+      description: 'Protected endpoint request had an invalid or expired token.'
+    });
     return res.status(401).json({
       error: 'Invalid or expired token.'
     });
@@ -1102,6 +1215,17 @@ function authenticateToken(req, res, next) {
 
 function requireAdmin(req, res, next) {
   if (req.user?.role !== 'admin') {
+    auditLog({
+      req,
+      action: 'authorization_denied',
+      resourceType: 'admin_endpoint',
+      result: 'denied',
+      description: 'Non-admin user attempted to access an admin-only endpoint.',
+      metadata: {
+        requiredRole: 'admin',
+        actualRole: req.user?.role || 'unknown'
+      }
+    });
     return res.status(403).json({
       error: 'Admin access required.'
     });
@@ -1113,6 +1237,17 @@ function requireAdmin(req, res, next) {
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.user?.role)) {
+      auditLog({
+        req,
+        action: 'authorization_denied',
+        resourceType: 'role_endpoint',
+        result: 'denied',
+        description: 'User attempted to access an endpoint without the required role.',
+        metadata: {
+          requiredRoles: roles,
+          actualRole: req.user?.role || 'unknown'
+        }
+      });
       return res.status(403).json({
         error: 'Insufficient role permissions.'
       });
@@ -1136,12 +1271,32 @@ app.post('/api/login', loginRateLimit, async (req, res) => {
   const password = String(req.body?.password || '');
 
   if (!username || !password) {
+    auditLog({
+      req,
+      actor: username || 'anonymous',
+      role: 'anonymous',
+      action: 'login_failure',
+      resourceType: 'auth',
+      result: 'failure',
+      description: 'Login failed because username or password was missing.',
+      metadata: { reason: 'missing_fields' }
+    });
     return res.status(400).json({
       error: 'Username and password are required.'
     });
   }
 
   if (!ADMIN_PASSWORD_HASH && !USER_PASSWORD_HASH) {
+    auditLog({
+      req,
+      actor: username,
+      role: 'anonymous',
+      action: 'login_failure',
+      resourceType: 'auth',
+      result: 'failure',
+      description: 'Login failed because server authentication is not configured.',
+      metadata: { reason: 'auth_not_configured' }
+    });
     return res.status(500).json({
       error: 'Authentication is not configured on the server.'
     });
@@ -1157,6 +1312,18 @@ app.post('/api/login', loginRateLimit, async (req, res) => {
     : false;
 
   if (!matchedUser || !passwordMatches) {
+    auditLog({
+      req,
+      actor: username || 'anonymous',
+      role: 'anonymous',
+      action: 'login_failure',
+      resourceType: 'auth',
+      result: 'failure',
+      description: 'Login failed with invalid username or password.',
+      metadata: {
+        reason: matchedUser ? 'invalid_password' : 'unknown_user'
+      }
+    });
     return res.status(401).json({
       error: 'Invalid username or password.'
     });
@@ -1183,6 +1350,15 @@ app.post('/api/login', loginRateLimit, async (req, res) => {
     severity: 'Info',
     description: `${matchedUser.role} login succeeded.`
   });
+  auditLog({
+    req,
+    actor: matchedUser.username,
+    role: matchedUser.role,
+    action: 'login_success',
+    resourceType: 'auth',
+    result: 'success',
+    description: `${matchedUser.role} login succeeded.`
+  });
 });
 
 app.get('/api/me', authenticateToken, (req, res) => {
@@ -1191,6 +1367,25 @@ app.get('/api/me', authenticateToken, (req, res) => {
     username: req.user.username,
     role: req.user.role === 'admin' ? 'admin' : 'user'
   });
+});
+
+app.post('/api/logout', authenticateToken, (req, res) => {
+  auditLog({
+    req,
+    action: 'logout',
+    resourceType: 'auth',
+    result: 'success',
+    description: 'User reported logout from the browser session.'
+  });
+  queueTimelineEvent({
+    type: 'logout',
+    category: 'Auth',
+    actor: req.user.username,
+    role: req.user.role,
+    severity: 'Info',
+    description: 'User logged out from the browser session.'
+  });
+  res.json({ saved: true });
 });
 
 app.get('/api/status', async (req, res) => {
@@ -1239,6 +1434,14 @@ app.get('/api/timeline', authenticateToken, requireAdmin, async (req, res) => {
   res.json(events);
 });
 
+app.get('/api/audit-logs', authenticateToken, requireAdmin, async (req, res) => {
+  const category = validateText(req.query?.category || 'All', 40);
+  const limit = Math.min(Math.max(Number(req.query?.limit || 300), 1), 1000);
+  res.json({
+    logs: listAuditLogs({ category, limit })
+  });
+});
+
 app.post('/api/timeline', authenticateToken, requireRole('admin', 'user'), async (req, res) => {
   const { type, category, severity, description, metadata } = req.body || {};
   await recordTimelineEvent({
@@ -1250,6 +1453,34 @@ app.post('/api/timeline', authenticateToken, requireRole('admin', 'user'), async
     description: description || 'User interface event recorded.',
     metadata: metadata || {}
   });
+  if (type === 'simulation_scenario_analyzed') {
+    auditLog({
+      req,
+      action: 'simulation_scenario_analyzed',
+      resourceType: 'simulation',
+      resourceId: metadata?.scenarioId || null,
+      result: 'success',
+      description: description || 'Simulation scenario analyzed.',
+      metadata
+    });
+  } else if (type === 'ai_security_review') {
+    auditLog({
+      req,
+      action: 'ai_security_review',
+      resourceType: 'security_review',
+      result: 'success',
+      description: description || 'AI security review run from Security Center.',
+      metadata
+    });
+  } else if (type === 'logout') {
+    auditLog({
+      req,
+      action: 'logout',
+      resourceType: 'auth',
+      result: 'success',
+      description: description || 'User reported logout from the browser session.'
+    });
+  }
   res.json({ saved: true });
 });
 
@@ -1287,6 +1518,20 @@ app.patch('/api/alerts/:id/acknowledge', authenticateToken, requireAdmin, async 
       threshold: alert.threshold
     }
   });
+  auditLog({
+    req,
+    action: 'alert_acknowledged',
+    resourceType: 'alert',
+    resourceId: alert.id,
+    result: 'success',
+    description: `Alert acknowledged: ${alert.title}.`,
+    metadata: {
+      alertType: alert.type,
+      value: alert.value,
+      threshold: alert.threshold,
+      severity: alert.severity
+    }
+  });
 
   res.json({ saved: true, alert });
 });
@@ -1307,6 +1552,14 @@ app.post('/api/analyze-alerts', authenticateToken, requireAdmin, aiRateLimit, as
         role: req.user.role,
         severity: activeAlerts.some((alert) => alert.severity === 'Critical') ? 'Critical' : 'Info',
         description: `AI alert explanation requested for ${activeAlerts.length} active alert(s).`
+      });
+      auditLog({
+        req,
+        action: 'ai_alerts_analysis',
+        resourceType: 'alerts',
+        result: 'success',
+        description: `AI alert explanation requested for ${activeAlerts.length} active alert(s).`,
+        metadata: { activeAlertCount: activeAlerts.length, mode: 'demo' }
       });
       return res.json({
         summary: activeAlerts.length
@@ -1367,6 +1620,14 @@ Rules:
       severity: 'Info',
       description: `AI alert explanation requested for ${alerts.filter((alert) => alert.status === 'Active').length} active alert(s).`
     });
+    auditLog({
+      req,
+      action: 'ai_alerts_analysis',
+      resourceType: 'alerts',
+      result: 'success',
+      description: `AI alert explanation requested for ${alerts.filter((alert) => alert.status === 'Active').length} active alert(s).`,
+      metadata: { activeAlertCount: alerts.filter((alert) => alert.status === 'Active').length }
+    });
     res.json(sanitizeObject(JSON.parse(cleanJson)));
   } catch (error) {
     console.error('[API ERROR /api/analyze-alerts]', error);
@@ -1388,6 +1649,14 @@ app.post('/api/analyze-metrics', authenticateToken, requireAdmin, aiRateLimit, a
         role: req.user.role,
         severity: 'Info',
         description: 'AI metrics analysis requested.'
+      });
+      auditLog({
+        req,
+        action: 'ai_metrics_analysis',
+        resourceType: 'metrics',
+        result: 'success',
+        description: 'AI metrics analysis requested.',
+        metadata: { mode: 'demo' }
       });
       return res.json(getMockMetricsAnalysis(metrics));
     }
@@ -1441,6 +1710,14 @@ Rules:
       severity: parsed.overallHealth || 'Info',
       description: 'AI metrics analysis requested.'
     });
+    auditLog({
+      req,
+      action: 'ai_metrics_analysis',
+      resourceType: 'metrics',
+      result: 'success',
+      description: 'AI metrics analysis requested.',
+      metadata: { overallHealth: parsed.overallHealth || 'Unknown' }
+    });
     res.json(sanitizeObject(parsed));
   } catch (error) {
     console.error('[API ERROR /api/analyze-metrics]', error);
@@ -1491,6 +1768,14 @@ app.post('/api/remediation-plan', authenticateToken, requireRole('admin', 'user'
         role: req.user.role,
         severity: analysis.severity || 'Info',
         description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`
+      });
+      auditLog({
+        req,
+        action: 'remediation_plan_generated',
+        resourceType: 'remediation_plan',
+        result: 'success',
+        description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`,
+        metadata: { mode: 'demo', severity: analysis.severity || 'Unknown' }
       });
       return res.json(fallbackPlan);
     }
@@ -1548,6 +1833,14 @@ Rules:
       severity: analysis.severity || 'Info',
       description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`
     });
+    auditLog({
+      req,
+      action: 'remediation_plan_generated',
+      resourceType: 'remediation_plan',
+      result: 'success',
+      description: `AI remediation plan generated for analysis: ${String(analysis.summary || 'No summary').slice(0, 140)}`,
+      metadata: { severity: analysis.severity || 'Unknown' }
+    });
     res.json(sanitizeObject(parsed));
   } catch (error) {
     console.error('[API ERROR /api/remediation-plan]', error);
@@ -1584,6 +1877,18 @@ app.post('/api/analyze-log', authenticateToken, aiRateLimit, async (req, res) =>
       role: req.user.role,
       severity: sanitizedMock.severity || 'Info',
       description: `AI log analysis completed: ${String(sanitizedMock.summary || 'No summary').slice(0, 160)}`
+    });
+    auditLog({
+      req,
+      action: 'ai_analysis_run',
+      resourceType: 'analysis',
+      result: 'success',
+      description: `AI log analysis completed: ${String(sanitizedMock.summary || 'No summary').slice(0, 160)}`,
+      metadata: {
+        mode: 'demo',
+        inputLength: logText.length,
+        severity: sanitizedMock.severity || 'Unknown'
+      }
     });
     return res.json(sanitizedMock);
   }
@@ -1629,11 +1934,30 @@ app.post('/api/analyze-log', authenticateToken, aiRateLimit, async (req, res) =>
       severity: sanitizedResult.severity || 'Info',
       description: `AI log analysis completed: ${String(sanitizedResult.summary || 'No summary').slice(0, 160)}`
     });
+    auditLog({
+      req,
+      action: 'ai_analysis_run',
+      resourceType: 'analysis',
+      result: 'success',
+      description: `AI log analysis completed: ${String(sanitizedResult.summary || 'No summary').slice(0, 160)}`,
+      metadata: {
+        inputLength: logText.length,
+        severity: sanitizedResult.severity || 'Unknown'
+      }
+    });
     res.json(sanitizedResult);
 
   } catch (error) {
     console.error('[API ERROR /api/analyze-log]', error);
     apiRuntimeMetrics.failedAIAnalyses += 1;
+    auditLog({
+      req,
+      action: 'ai_analysis_run',
+      resourceType: 'analysis',
+      result: 'failure',
+      description: 'AI log analysis failed.',
+      metadata: { inputLength: logText.length }
+    });
     res.status(500).json({ 
       error: "GenAI log analysis failed."
     });
@@ -1739,6 +2063,14 @@ app.post('/api/generate-commands', authenticateToken, requireAdmin, aiRateLimit,
     await new Promise(resolve => setTimeout(resolve, 800));
     const rawMock = getMockCommands(logText);
     const sanitizedMock = sanitizeAIOutput(rawMock).text;
+    auditLog({
+      req,
+      action: 'safe_commands_generated',
+      resourceType: 'commands',
+      result: 'success',
+      description: 'Safe command guidance generated.',
+      metadata: { mode: 'demo', inputLength: logText.length }
+    });
     return res.json({ commandsMarkdown: sanitizedMock });
   }
 
@@ -1756,6 +2088,14 @@ app.post('/api/generate-commands', authenticateToken, requireAdmin, aiRateLimit,
     res.json({ 
       commandsMarkdown: sanitizedText,
       sanitizationTriggered: wasSanitized
+    });
+    auditLog({
+      req,
+      action: 'safe_commands_generated',
+      resourceType: 'commands',
+      result: 'success',
+      description: 'Safe command guidance generated.',
+      metadata: { inputLength: logText.length, sanitizationTriggered: wasSanitized }
     });
 
   } catch (error) {
@@ -1785,6 +2125,14 @@ app.post('/api/generate-report', authenticateToken, requireAdmin, aiRateLimit, a
     const analysisObj = typeof analysis === 'object' ? analysis : null;
     const rawMock = getMockReport(logText, analysisObj);
     const sanitizedMock = sanitizeAIOutput(rawMock).text;
+    auditLog({
+      req,
+      action: 'incident_report_generated',
+      resourceType: 'report',
+      result: 'success',
+      description: 'Incident report generated.',
+      metadata: { mode: 'demo', inputLength: logText.length }
+    });
     return res.json({ reportMarkdown: sanitizedMock });
   }
 
@@ -1796,6 +2144,14 @@ app.post('/api/generate-report', authenticateToken, requireAdmin, aiRateLimit, a
     const { text: sanitizedText } = sanitizeAIOutput(rawResponse);
 
     res.json({ reportMarkdown: sanitizedText });
+    auditLog({
+      req,
+      action: 'incident_report_generated',
+      resourceType: 'report',
+      result: 'success',
+      description: 'Incident report generated.',
+      metadata: { inputLength: logText.length }
+    });
 
   } catch (error) {
     console.error('[API ERROR /api/generate-report]', error);
@@ -1949,6 +2305,19 @@ app.post('/api/tickets', authenticateToken, requireRole('admin', 'user'), async 
       severity: 'Info',
       description: `${req.user.role} created ${ticket.type}: ${ticket.message.slice(0, 140)}`
     });
+    auditLog({
+      req,
+      action: 'ticket_created',
+      resourceType: 'ticket',
+      resourceId: ticket.id,
+      result: 'success',
+      description: `${req.user.role} created ${ticket.type}.`,
+      metadata: {
+        ticketType: ticket.type,
+        targetUser: ticket.targetUser,
+        messageLength: ticket.message.length
+      }
+    });
 
     res.json({ saved: true, ticket });
   } catch (error) {
@@ -1982,6 +2351,14 @@ app.delete('/api/tickets/:id', authenticateToken, requireRole('admin', 'user'), 
   const ownsTicket = ticket.from === req.user.username;
 
   if (req.user.role !== 'admin' && !ownsTicket) {
+    auditLog({
+      req,
+      action: 'authorization_denied',
+      resourceType: 'ticket',
+      resourceId: ticket.id,
+      result: 'denied',
+      description: 'User attempted to delete a ticket they do not own.'
+    });
     return res.status(403).json({
       error: 'You can only delete your own tickets.'
     });
@@ -1990,6 +2367,18 @@ app.delete('/api/tickets/:id', authenticateToken, requireRole('admin', 'user'), 
   tickets.splice(ticketIndex, 1);
   await writeTickets(tickets);
   broadcastInboxUnreadCounts();
+  auditLog({
+    req,
+    action: 'ticket_deleted',
+    resourceType: 'ticket',
+    resourceId: ticket.id,
+    result: 'success',
+    description: 'Ticket deleted.',
+    metadata: {
+      ticketType: ticket.type,
+      ticketOwner: ticket.from
+    }
+  });
   res.json({ deleted: true });
 });
 
@@ -2025,6 +2414,15 @@ app.patch('/api/tickets/:id/status', authenticateToken, requireAdmin, async (req
     severity: status === 'Resolved' ? 'Info' : 'Warning',
     description: `Ticket status changed to ${status}.`
   });
+  auditLog({
+    req,
+    action: 'ticket_status_changed',
+    resourceType: 'ticket',
+    resourceId: ticket.id,
+    result: 'success',
+    description: `Ticket status changed to ${status}.`,
+    metadata: { status }
+  });
   res.json({ saved: true, ticket });
 });
 
@@ -2039,6 +2437,14 @@ app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user
   }
 
   if (!canViewTicket(ticket, req.user)) {
+    auditLog({
+      req,
+      action: 'authorization_denied',
+      resourceType: 'ticket',
+      resourceId: ticket.id,
+      result: 'denied',
+      description: 'User attempted to mark a ticket they cannot view as read.'
+    });
     return res.status(403).json({
       error: 'You can only mark visible tickets as read.'
     });
@@ -2048,6 +2454,14 @@ app.patch('/api/tickets/:id/read', authenticateToken, requireRole('admin', 'user
   ticket.updatedAt = new Date().toISOString();
   await writeTickets(tickets);
   broadcastInboxUnreadCounts();
+  auditLog({
+    req,
+    action: 'ticket_marked_read',
+    resourceType: 'ticket',
+    resourceId: ticket.id,
+    result: 'success',
+    description: 'Ticket marked as read.'
+  });
   res.json({ saved: true, ticket });
 });
 
@@ -2070,6 +2484,14 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user
   }
 
   if (!canViewTicket(ticket, req.user)) {
+    auditLog({
+      req,
+      action: 'authorization_denied',
+      resourceType: 'ticket',
+      resourceId: ticket.id,
+      result: 'denied',
+      description: 'User attempted to reply to a ticket they cannot view.'
+    });
     return res.status(403).json({
       error: 'You can only reply to visible tickets.'
     });
@@ -2094,6 +2516,15 @@ app.post('/api/tickets/:id/reply', authenticateToken, requireRole('admin', 'user
     role: req.user.role,
     severity: 'Info',
     description: `Ticket reply added: ${message.slice(0, 140)}`
+  });
+  auditLog({
+    req,
+    action: 'ticket_replied',
+    resourceType: 'ticket',
+    resourceId: ticket.id,
+    result: 'success',
+    description: 'Ticket reply added.',
+    metadata: { messageLength: message.length }
   });
   res.json({ saved: true, ticket });
 });

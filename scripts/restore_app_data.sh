@@ -25,6 +25,7 @@ fi
 
 [ -f "$DATA_DIR/tickets.json" ] || printf '[]\n' > "$DATA_DIR/tickets.json"
 [ -f "$DATA_DIR/timeline.json" ] || printf '[]\n' > "$DATA_DIR/timeline.json"
+[ -f "$DATA_DIR/audit_logs.json" ] || printf '[]\n' > "$DATA_DIR/audit_logs.json"
 [ -f "$HISTORY_FILE" ] || printf '[]\n' > "$HISTORY_FILE"
 
 if [ -f "$DB_FILE" ]; then

@@ -2464,6 +2464,21 @@ button {
   font-size: 0.75rem;
 }
 
+.audit-log-feed {
+  max-height: 640px;
+  overflow: auto;
+}
+
+.audit-log-item .timeline-feed-header strong {
+  text-transform: none;
+}
+
+.audit-metadata {
+  border-top: 1px solid var(--border-color);
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+}
+
 .btn-danger-light {
   border-color: rgba(239, 68, 68, 0.32);
   color: #fca5a5;

@@ -19,10 +19,12 @@ const dashboardViewBtn = document.getElementById('dashboard-view-btn');
 const securityCenterBtn = document.getElementById('security-center-btn');
 const inboxViewBtn = document.getElementById('inbox-view-btn');
 const timelineViewBtn = document.getElementById('timeline-view-btn');
+const auditLogsViewBtn = document.getElementById('audit-logs-view-btn');
 const backToAnalyzerBtn = document.getElementById('back-to-analyzer-btn');
 const securityBackBtn = document.getElementById('security-back-btn');
 const inboxBackBtn = document.getElementById('inbox-back-btn');
 const timelineBackBtn = document.getElementById('timeline-back-btn');
+const auditLogsBackBtn = document.getElementById('audit-logs-back-btn');
 const governanceBackBtn = document.getElementById('governance-back-btn');
 const footerComplianceLink = document.getElementById('footer-compliance-link');
 const operationsPanel = document.getElementById('operations-panel');
@@ -40,6 +42,7 @@ const securityCenterView = document.getElementById('security-center-view');
 const inboxView = document.getElementById('inbox-view');
 const governanceView = document.getElementById('governance-view');
 const timelineView = document.getElementById('timeline-view');
+const auditLogsView = document.getElementById('audit-logs-view');
 
 const VIEW_STORAGE_KEY = 'aiOpsActiveView';
 const SIMULATION_STORAGE_KEY = 'aiOpsSimulationMode';
@@ -47,7 +50,7 @@ const GOVERNANCE_ACK_KEY = 'aiOpsGovernanceAcknowledgements';
 const OPERATIONS_COLLAPSED_KEY = 'aiOpsOperationsPanelCollapsed';
 const GOVERNANCE_VERSION = 'governance-v1';
 const DEFAULT_VIEW = 'analyzer';
-const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance', 'timeline']);
+const VALID_VIEWS = new Set(['analyzer', 'dashboard', 'simulation', 'security', 'inbox', 'governance', 'timeline', 'audit']);
 const INPUT_COLLAPSE_BREAKPOINT = 1180;
 
 if (localStorage.getItem('authToken')) {
@@ -772,11 +775,16 @@ const governanceStatus = document.getElementById('governance-status');
 const incidentTimelineList = document.getElementById('incident-timeline-list');
 const timelineFilters = document.getElementById('timeline-filters');
 const refreshTimelineBtn = document.getElementById('refresh-timeline-btn');
+const auditLogList = document.getElementById('audit-log-list');
+const auditLogFilters = document.getElementById('audit-log-filters');
+const refreshAuditLogsBtn = document.getElementById('refresh-audit-logs-btn');
 
 let generatedCommandsText = "";
 let generatedReportText = "";
 let incidentTimelineEvents = [];
 let activeTimelineFilter = 'All';
+let auditLogEntries = [];
+let activeAuditLogFilter = 'All';
 
 // ==========================================
 // LOCAL MOCK DIAGNOSTIC ENGINE (Simulation)
@@ -1335,7 +1343,7 @@ function handleForbiddenResponse(options = {}) {
     ticketStatus.classList.remove('hidden');
   }
 
-  if (redirectToAnalyzer && ['dashboard', 'security', 'timeline'].includes(getSavedView())) {
+  if (redirectToAnalyzer && ['dashboard', 'security', 'timeline', 'audit'].includes(getSavedView())) {
     showAnalyzerView();
   }
 
@@ -2801,6 +2809,8 @@ function restoreSavedView() {
     showInboxView({ persist: false });
   } else if (getSavedView() === 'timeline') {
     showTimelineView({ persist: false });
+  } else if (getSavedView() === 'audit') {
+    showAuditLogsView({ persist: false });
   } else if (getSavedView() === 'governance') {
     showGovernanceView({ persist: false });
   } else {
@@ -2821,6 +2831,7 @@ function showMetricsDashboard(options = {}) {
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   metricsDashboardView?.classList.remove('hidden');
   dashboardViewBtn?.classList.add('active-view');
@@ -2847,6 +2858,7 @@ function showAnalyzerView(options = {}) {
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   analyzerView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2875,6 +2887,7 @@ function showSimulationLab(options = {}) {
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   simulationLabView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2897,6 +2910,7 @@ function showSecurityCenter(options = {}) {
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   securityCenterView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2921,6 +2935,7 @@ function showInboxView(options = {}) {
   securityCenterView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   inboxView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
 
@@ -2945,6 +2960,7 @@ function showTimelineView(options = {}) {
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   governanceView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   timelineView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -2954,6 +2970,31 @@ function showTimelineView(options = {}) {
   }
 
   loadTimelineEvents();
+}
+
+function showAuditLogsView(options = {}) {
+  if (!hasValidatedSession() || !isAdminUser()) {
+    return;
+  }
+
+  const { persist = true } = options;
+
+  analyzerView?.classList.add('hidden');
+  metricsDashboardView?.classList.add('hidden');
+  simulationLabView?.classList.add('hidden');
+  securityCenterView?.classList.add('hidden');
+  inboxView?.classList.add('hidden');
+  governanceView?.classList.add('hidden');
+  timelineView?.classList.add('hidden');
+  stopInboxPolling();
+  auditLogsView?.classList.remove('hidden');
+  dashboardViewBtn?.classList.remove('active-view');
+
+  if (persist) {
+    localStorage.setItem(VIEW_STORAGE_KEY, 'audit');
+  }
+
+  loadAuditLogs();
 }
 
 function showGovernanceView(options = {}) {
@@ -2969,6 +3010,7 @@ function showGovernanceView(options = {}) {
   securityCenterView?.classList.add('hidden');
   inboxView?.classList.add('hidden');
   timelineView?.classList.add('hidden');
+  auditLogsView?.classList.add('hidden');
   stopInboxPolling();
   governanceView?.classList.remove('hidden');
   dashboardViewBtn?.classList.remove('active-view');
@@ -3133,7 +3175,14 @@ function cancelActiveAnalysis() {
 }
 
 function performSessionLogout() {
-  recordTimelineEvent('logout', 'Auth', 'Info', 'User logged out from the browser session.');
+  if (hasValidatedSession()) {
+    apiFetch('/logout', {
+      method: 'POST',
+      keepalive: true
+    }).catch(() => {
+      // Logout audit reporting should never block local session cleanup.
+    });
+  }
   cancelActiveAnalysis();
   clearAuthState();
   setSimulationMode(false);
@@ -3180,6 +3229,7 @@ function applyRoleAccess() {
   dashboardViewBtn?.classList.toggle('hidden', !isAdmin);
   securityCenterBtn?.classList.toggle('hidden', !isAdmin);
   timelineViewBtn?.classList.toggle('hidden', !isAdmin);
+  auditLogsViewBtn?.classList.toggle('hidden', !isAdmin);
   inboxViewBtn?.classList.toggle('hidden', !hasToken);
   historyContent?.classList.add('hidden');
   document.getElementById('history-panel')?.classList.toggle('hidden', !hasToken);
@@ -3208,7 +3258,7 @@ function applyRoleAccess() {
     submitTicketBtn.textContent = isAdmin ? 'Create user-facing ticket' : 'Submit to Admin';
   }
 
-  if (!isAdmin && ['dashboard', 'security', 'timeline'].includes(getSavedView())) {
+  if (!isAdmin && ['dashboard', 'security', 'timeline', 'audit'].includes(getSavedView())) {
     showAnalyzerView();
   }
 
@@ -3326,10 +3376,12 @@ dashboardViewBtn?.addEventListener('click', showMetricsDashboard);
 securityCenterBtn?.addEventListener('click', showSecurityCenter);
 inboxViewBtn?.addEventListener('click', showInboxView);
 timelineViewBtn?.addEventListener('click', showTimelineView);
+auditLogsViewBtn?.addEventListener('click', showAuditLogsView);
 backToAnalyzerBtn?.addEventListener('click', showAnalyzerView);
 securityBackBtn?.addEventListener('click', showAnalyzerView);
 inboxBackBtn?.addEventListener('click', showAnalyzerView);
 timelineBackBtn?.addEventListener('click', showAnalyzerView);
+auditLogsBackBtn?.addEventListener('click', showAnalyzerView);
 governanceBackBtn?.addEventListener('click', showAnalyzerView);
 simulationToggleBtn?.addEventListener('click', () => setSimulationMode(!isSimulationModeEnabled()));
 simulationLabBtn?.addEventListener('click', showSimulationLab);
@@ -3355,6 +3407,7 @@ securityAiReviewBtn?.addEventListener('click', reviewSecurityPostureWithAI);
 submitTicketBtn?.addEventListener('click', submitTicketToAdmin);
 refreshTicketsBtn?.addEventListener('click', loadTickets);
 refreshTimelineBtn?.addEventListener('click', loadTimelineEvents);
+refreshAuditLogsBtn?.addEventListener('click', loadAuditLogs);
 acknowledgeGovernanceBtn?.addEventListener('click', acknowledgeGovernanceGuidance);
 exportGovernanceBtn?.addEventListener('click', exportGovernanceHistory);
 changeSimulationBtn?.addEventListener('click', showSimulationLab);
@@ -3408,6 +3461,19 @@ timelineFilters?.addEventListener('click', (event) => {
     button.classList.toggle('active-filter', button.dataset.timelineFilter === filter);
   });
   renderTimelineEvents();
+});
+auditLogFilters?.addEventListener('click', (event) => {
+  const filter = event.target?.dataset?.auditFilter;
+
+  if (!filter) {
+    return;
+  }
+
+  activeAuditLogFilter = filter;
+  auditLogFilters.querySelectorAll('button').forEach((button) => {
+    button.classList.toggle('active-filter', button.dataset.auditFilter === filter);
+  });
+  loadAuditLogs();
 });
 clearLocalHistoryBtn?.addEventListener('click', () => {
   sessionHistory = [];
@@ -4170,6 +4236,112 @@ async function loadTimelineEvents() {
   } catch {
     if (incidentTimelineList) {
       incidentTimelineList.innerHTML = '<p class="feedback-status">Could not load timeline right now.</p>';
+    }
+  }
+}
+
+function getAuditCategory(action = '') {
+  const normalizedAction = String(action || '');
+
+  if (['login_success', 'login_failure', 'logout', 'authentication_missing', 'authentication_invalid'].includes(normalizedAction)) {
+    return 'Auth';
+  }
+
+  if (normalizedAction.startsWith('ticket_')) {
+    return 'Tickets';
+  }
+
+  if (normalizedAction.startsWith('alert_')) {
+    return 'Alerts';
+  }
+
+  if (normalizedAction === 'authorization_denied' || normalizedAction.includes('security')) {
+    return 'Security';
+  }
+
+  if (normalizedAction.includes('simulation')) {
+    return 'Simulation';
+  }
+
+  if (normalizedAction.startsWith('ai_') || normalizedAction.includes('remediation') || normalizedAction.includes('commands') || normalizedAction.includes('report')) {
+    return 'AI';
+  }
+
+  return 'General';
+}
+
+function getAuditBadgeClass(result) {
+  const normalizedResult = String(result || '').toLowerCase();
+
+  if (normalizedResult === 'success') return 'badge-low';
+  if (normalizedResult === 'denied' || normalizedResult === 'failure') return 'badge-critical';
+  return 'badge-status-default';
+}
+
+function renderAuditLogs() {
+  if (!auditLogList) {
+    return;
+  }
+
+  const filteredLogs = activeAuditLogFilter === 'All'
+    ? auditLogEntries
+    : auditLogEntries.filter((entry) => getAuditCategory(entry.action) === activeAuditLogFilter);
+
+  auditLogList.innerHTML = '';
+
+  if (!filteredLogs.length) {
+    auditLogList.innerHTML = '<p class="feedback-status">No audit logs for this filter.</p>';
+    return;
+  }
+
+  filteredLogs.forEach((entry) => {
+    const metadata = entry.metadata && typeof entry.metadata === 'object'
+      ? Object.entries(entry.metadata)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .slice(0, 4)
+        .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+      : [];
+    const item = document.createElement('article');
+    item.className = 'timeline-feed-item audit-log-item';
+    item.innerHTML = `
+      <div class="timeline-feed-header">
+        <span class="badge ${getAuditBadgeClass(entry.result)}">${escapeHtml(entry.result || 'recorded')}</span>
+        <strong>${escapeHtml(entry.action || 'audit_event')}</strong>
+        <span>${new Date(entry.timestamp || Date.now()).toLocaleString()}</span>
+      </div>
+      <p>${escapeHtml(entry.description || '')}</p>
+      <div class="timeline-feed-meta">
+        <span>Actor: ${escapeHtml(entry.actor || 'unknown')}</span>
+        <span>Role: ${escapeHtml(entry.role || '--')}</span>
+        <span>Resource: ${escapeHtml(entry.resourceType || 'general')}${entry.resourceId ? ` / ${escapeHtml(entry.resourceId)}` : ''}</span>
+      </div>
+      ${metadata.length ? `<div class="timeline-feed-meta audit-metadata">${metadata.map((itemText) => `<span>${escapeHtml(itemText)}</span>`).join('')}</div>` : ''}
+    `;
+    auditLogList.appendChild(item);
+  });
+}
+
+async function loadAuditLogs() {
+  if (!hasValidatedSession() || !isAdminUser()) {
+    return;
+  }
+
+  try {
+    const response = await apiFetch(`/audit-logs?category=${encodeURIComponent(activeAuditLogFilter)}&limit=300`, {
+      adminOnly: true,
+      onForbidden: 'redirect'
+    });
+
+    if (!response || !response.ok) {
+      throw new Error(`Audit logs failed with ${response?.status || 'no response'}`);
+    }
+
+    const data = await response.json();
+    auditLogEntries = Array.isArray(data.logs) ? data.logs : [];
+    renderAuditLogs();
+  } catch {
+    if (auditLogList) {
+      auditLogList.innerHTML = '<p class="feedback-status">Could not load audit logs right now.</p>';
     }
   }
 }

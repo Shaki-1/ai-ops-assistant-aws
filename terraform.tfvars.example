@@ -1,6 +1,6 @@
 ec2_type          = "t3.micro"
 ec2_name          = "ai-ops-assistant"
-keypair           = "your-ec2-keypair-name"
+keypair           = "ai-ops-laura-new"
 aws_owner         = "your-name"
 groq_api_key      = "YOUR_GROQ_API_KEY"
 duckdns_domain    = "your-duckdns-subdomain"
