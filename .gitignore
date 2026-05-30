@@ -16,6 +16,7 @@ backend/package-lock.json
 .terraform/
 .terraform-tmp/
 *.tfstate
+*.tfstate.*
 *.tfstate.backup
 terraform.tfstate
 terraform.tfstate.backup
